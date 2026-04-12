@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import empty_state, page_header %}
+{% block title %}Analytics · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Analytics", "Trend and category insights for recent monthly performance.") }}
+  <section class="grid two">
+    <article class="panel chart-panel">
+      <div class="panel-head">
+        <h2>Income vs Expense</h2>
+        <p class="panel-meta">Last {{ snapshot.flow_labels|length }} months</p>
+      </div>
+      <canvas id="flowChart" height="220"></canvas>
+    </article>
+
+    <article class="panel chart-panel">
+      <div class="panel-head">
+        <h2>Spend by Category</h2>
+        <p class="panel-meta">Top categories</p>
+      </div>
+      {% if snapshot.category_labels %}
+        <canvas id="categoryChart" height="220"></canvas>
+      {% else %}
+        {{ empty_state("Not enough data", "Add expense transactions to populate category analytics.") }}
+      {% endif %}
+    </article>
+  </section>
+
+  <script id="flow-chart-data" type="application/json">
+    {{ {"labels": snapshot.flow_labels, "income": snapshot.income_points, "expense": snapshot.expense_points}|tojson }}
+  </script>
+  <script id="category-chart-data" type="application/json">
+    {{ {"labels": snapshot.category_labels, "values": snapshot.category_points}|tojson }}
+  </script>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

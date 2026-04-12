@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Server Error · FinTrack{% endblock %}
+
+{% block app_content %}
+  <section class="panel narrow error-state">
+    <p class="eyebrow">500</p>
+    <h1>Unexpected error</h1>
+    <p>An internal error occurred while processing your request.</p>
+    <a class="btn btn-primary" href="{{ url_for('dashboard.index') }}">Back to dashboard</a>
+  </section>
+{% endblock %}
+
+{% block public_content %}
+  <section class="panel narrow error-state">
+    <p class="eyebrow">500</p>
+    <h1>Unexpected error</h1>
+    <p>An internal error occurred while processing your request.</p>
+    <a class="btn btn-primary" href="{{ url_for('dashboard.home') }}">Back home</a>
+  </section>
+{% endblock %}

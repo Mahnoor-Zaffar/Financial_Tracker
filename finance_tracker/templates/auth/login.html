@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% block title %}Sign In · FinTrack{% endblock %}
+
+{% block public_content %}
+  <section class="auth-grid">
+    <article class="auth-brand">
+      <p class="eyebrow">Welcome back</p>
+      <h1>Continue your financial rhythm.</h1>
+      <p>Sign in to review cash flow, update transactions, and keep monthly plans on track.</p>
+    </article>
+
+    <article class="panel auth-panel">
+      <h2>Sign in</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.email, placeholder="you@example.com") }}
+        {{ field(form.password, placeholder="Your password") }}
+        <label class="checkbox-row">{{ form.remember() }} <span>Keep me signed in</span></label>
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+      <p class="auth-meta">
+        Need an account? <a href="{{ url_for('auth.register') }}">Create one</a>
+      </p>
+    </article>
+  </section>
+{% endblock %}

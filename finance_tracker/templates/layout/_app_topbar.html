@@ -1,0 +1,22 @@
+<header class="app-topbar">
+  <div class="topbar-left">
+    <button class="btn btn-ghost mobile-nav-toggle" type="button" data-nav-open>
+      Menu
+    </button>
+    <div class="topbar-meta">
+      <p class="topbar-kicker">{{ current_user.currency_code }} · {{ current_user.timezone }}</p>
+      <p class="topbar-title">Finance Tracker</p>
+    </div>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="btn btn-ghost" type="button" data-theme-toggle aria-label="Toggle color mode">
+      Theme
+    </button>
+    <a class="btn btn-muted" href="{{ url_for('settings.profile') }}">Profile</a>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <button class="btn btn-ghost" type="submit">Log out</button>
+    </form>
+  </div>
+</header>

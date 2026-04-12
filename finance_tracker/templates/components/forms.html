@@ -1,0 +1,28 @@
+{% macro field(field, placeholder='', helper='', input_class='') -%}
+  {% set has_error = field.errors|length > 0 %}
+  {% set described_by = [] %}
+  {% if helper %}
+    {% set _ = described_by.append(field.id ~ "-hint") %}
+  {% endif %}
+  {% if has_error %}
+    {% set _ = described_by.append(field.id ~ "-error") %}
+  {% endif %}
+  {% set attrs = {
+    "class_": "field-input " ~ input_class,
+    "placeholder": placeholder,
+    "aria-invalid": "true" if has_error else "false"
+  } %}
+  {% if described_by %}
+    {% set _ = attrs.update({"aria-describedby": " ".join(described_by)}) %}
+  {% endif %}
+  <div class="field-group {% if has_error %}has-error{% endif %}">
+    {{ field.label(class_="field-label") }}
+    {{ field(**attrs) }}
+    {% if helper %}
+      <p class="field-helper" id="{{ field.id }}-hint">{{ helper }}</p>
+    {% endif %}
+    {% if has_error %}
+      <p class="field-error" id="{{ field.id }}-error">{{ field.errors[0] }}</p>
+    {% endif %}
+  </div>
+{%- endmacro %}

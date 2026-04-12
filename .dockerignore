@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.sqlite
+*.db
+.pytest_cache
+.mypy_cache
+.DS_Store
+instance/*.db
+tests/__pycache__

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import page_header %}
+{% block title %}Edit Account · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Edit account", "Update account metadata while preserving transaction history.") }}
+  <section class="panel narrow">
+    <form method="post" class="stack compact form-auto-loading">
+      {{ form.hidden_tag() }}
+      {{ field(form.name) }}
+      {{ field(form.account_type) }}
+      {{ field(form.institution) }}
+      {{ field(form.opening_balance) }}
+      <div class="button-row">
+        {{ form.submit(class_="btn btn-primary") }}
+        <a class="btn btn-muted" href="{{ url_for('finance.accounts') }}">Back</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

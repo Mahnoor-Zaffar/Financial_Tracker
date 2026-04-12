@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import empty_state, page_header %}
+{% block title %}Tags · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Tags", "Lightweight labels for campaign, context, and recurring patterns.") }}
+
+  <section class="grid two align-start">
+    <article class="panel">
+      <h2>Add tag</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.name, placeholder="commute") }}
+        {{ field(form.color, placeholder="#a4603e") }}
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+    </article>
+
+    <article class="panel">
+      <div class="panel-head">
+        <h2>Tag registry</h2>
+        <p class="panel-meta">{{ tags|length }} tags</p>
+      </div>
+      {% if tags %}
+        <div class="stack">
+          {% for tag in tags %}
+            <div class="list-row">
+              <p class="list-title">{{ tag.name }}</p>
+              <div class="row-actions">
+                <span class="tag-chip" style="--tag-color: {{ tag.color }}">{{ tag.color }}</span>
+                <div class="button-row">
+                  <a class="btn btn-ghost" href="{{ url_for('finance.edit_tag', tag_id=tag.id) }}">Edit</a>
+                  <form
+                    method="post"
+                    action="{{ url_for('finance.delete_tag', tag_id=tag.id) }}"
+                    class="inline form-auto-loading"
+                    data-confirm="Delete this tag?"
+                  >
+                    {{ delete_form.csrf_token }}
+                    <button class="btn btn-danger" type="submit">Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty_state("No tags yet", "Create optional labels to group and filter transaction narratives.") }}
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}

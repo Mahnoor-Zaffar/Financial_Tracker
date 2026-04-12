@@ -1,0 +1,72 @@
+{% from "components/ui.html" import flash_block %}
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}FinTrack{% endblock %}</title>
+    <meta name="description" content="FinTrack personal finance tracker" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      (() => {
+        const saved = localStorage.getItem("fintrack-theme");
+        if (saved === "dark" || saved === "light") {
+          document.documentElement.setAttribute("data-theme", saved);
+          return;
+        }
+        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    {% if current_user.is_authenticated %}
+      <div class="app-shell">
+        {% include "layout/_app_sidebar.html" %}
+
+        <div class="app-main">
+          {% include "layout/_app_topbar.html" %}
+
+          <main class="app-content">
+            {{ flash_block() }}
+            {% block app_content %}{% endblock %}
+          </main>
+
+          <footer class="app-footer">FinTrack · {{ nav_year }}</footer>
+        </div>
+      </div>
+    {% else %}
+      <div class="public-shell">
+        {% include "layout/_public_nav.html" %}
+        <main class="public-content">
+          {{ flash_block() }}
+          {% block public_content %}{% endblock %}
+        </main>
+      </div>
+    {% endif %}
+
+    <div class="modal-root" data-confirm-root hidden aria-hidden="true">
+      <div class="modal-backdrop" data-confirm-close></div>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <p class="eyebrow">Confirm Action</p>
+        <h2 id="confirm-title">Are you sure?</h2>
+        <p data-confirm-message>This action cannot be undone.</p>
+        <div class="button-row">
+          <button type="button" class="btn btn-ghost" data-confirm-close>Cancel</button>
+          <button type="button" class="btn btn-danger" data-confirm-accept>Continue</button>
+        </div>
+      </section>
+    </div>
+
+    <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

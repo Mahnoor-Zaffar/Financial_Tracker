@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import page_header %}
+{% block title %}Settings · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Profile & Settings", "Control identity and display defaults for your workspace.") }}
+
+  <section class="grid two align-start">
+    <article class="panel">
+      <h2>Profile</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.full_name) }}
+        {{ field(form.currency_code, helper="Three-letter ISO code, e.g. USD") }}
+        {{ field(form.timezone) }}
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+    </article>
+
+    <article class="panel">
+      <h2>Security notes</h2>
+      <ul class="detail-list">
+        <li>Forms are CSRF-protected by default.</li>
+        <li>Passwords are hashed and never stored in plain text.</li>
+        <li>All finance resources are scoped to your user account.</li>
+      </ul>
+    </article>
+  </section>
+{% endblock %}

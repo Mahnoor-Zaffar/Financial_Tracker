@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import page_header %}
+{% block title %}Edit Budget · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Edit budget", "Change category, month, or threshold as your plan evolves.") }}
+  <section class="panel narrow">
+    <form method="post" class="stack compact form-auto-loading">
+      {{ form.hidden_tag() }}
+      {{ field(form.category_id) }}
+      {{ field(form.month_start) }}
+      {{ field(form.amount_limit) }}
+      <div class="button-row">
+        {{ form.submit(class_="btn btn-primary") }}
+        <a class="btn btn-muted" href="{{ url_for('budgets.index', month=budget.month_start.strftime('%Y-%m')) }}">Back</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

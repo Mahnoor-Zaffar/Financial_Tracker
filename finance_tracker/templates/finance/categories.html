@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import badge, empty_state, page_header %}
+{% block title %}Categories · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Categories", "Build a consistent taxonomy for income and spending.") }}
+
+  <section class="grid two align-start">
+    <article class="panel">
+      <h2>Add category</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.name, placeholder="Groceries") }}
+        {{ field(form.kind) }}
+        {{ field(form.color, placeholder="#6a7286") }}
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+    </article>
+
+    <article class="panel">
+      <div class="panel-head">
+        <h2>Category registry</h2>
+        <p class="panel-meta">{{ categories|length }} categories</p>
+      </div>
+      {% if categories %}
+        <div class="stack">
+          {% for category in categories %}
+            <div class="list-row">
+              <div>
+                <p class="list-title">{{ category.name }}</p>
+                <p class="list-subtitle">{{ badge(category.kind|title, 'neutral') }}</p>
+              </div>
+              <div class="row-actions">
+                <span class="color-token" style="background-color: {{ category.color }};"></span>
+                <div class="button-row">
+                  <a class="btn btn-ghost" href="{{ url_for('finance.edit_category', category_id=category.id) }}">Edit</a>
+                  <form
+                    method="post"
+                    action="{{ url_for('finance.delete_category', category_id=category.id) }}"
+                    class="inline form-auto-loading"
+                    data-confirm="Delete this category? Existing reports may lose category labels."
+                  >
+                    {{ delete_form.csrf_token }}
+                    <button class="btn btn-danger" type="submit">Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty_state("No categories yet", "Create category buckets before large-scale transaction entry.") }}
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}

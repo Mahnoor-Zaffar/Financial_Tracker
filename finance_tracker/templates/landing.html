@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}FinTrack · Personal Finance Tracker{% endblock %}
+
+{% block public_content %}
+  <section class="hero">
+    <p class="eyebrow">Editorial-grade money tracking</p>
+    <h1>Know exactly where your money moved, and why.</h1>
+    <p class="hero-copy">
+      FinTrack combines transactions, account balances, budgets, and analytics in one clean workflow.
+      It is built for daily discipline, not dashboard noise.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="{{ url_for('auth.register') }}">Start for free</a>
+      <a class="btn btn-ghost" href="{{ url_for('auth.login') }}">Already have an account</a>
+    </div>
+    <div class="hero-metrics">
+      <article>
+        <h3>Fast Entry</h3>
+        <p>Income, expenses, and transfers with tag support.</p>
+      </article>
+      <article>
+        <h3>Budget Signal</h3>
+        <p>Progress bars and overspending alerts that stay visible.</p>
+      </article>
+      <article>
+        <h3>Chart Clarity</h3>
+        <p>Integrated analytics that match the UI system.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="feature-grid">
+    <article class="feature-card">
+      <h3>Deliberate transaction workflow</h3>
+      <p>Filter by date, account, category, tag, and type without leaving context.</p>
+    </article>
+    <article class="feature-card">
+      <h3>Accountable budget planning</h3>
+      <p>Track monthly limits by category and resolve pressure early.</p>
+    </article>
+    <article class="feature-card">
+      <h3>Human-readable financial history</h3>
+      <p>Calm typography, strong hierarchy, and polished states for everyday use.</p>
+    </article>
+  </section>
+{% endblock %}

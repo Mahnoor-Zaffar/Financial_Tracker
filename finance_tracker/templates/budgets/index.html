@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import empty_state, page_header %}
+{% block title %}Budgets · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Budgets", "Set monthly category limits and review overspending pressure.") }}
+
+  <section class="grid two align-start">
+    <article class="panel">
+      <h2>Set or update budget</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.category_id) }}
+        {{ field(form.month_start, helper="Saved as first day of month") }}
+        {{ field(form.amount_limit, placeholder="0.00") }}
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+    </article>
+
+    <article class="panel">
+      <div class="panel-head">
+        <h2>Month view</h2>
+        <form method="get" class="month-picker">
+          <label class="sr-only" for="month">Month</label>
+          <input id="month" name="month" class="field-input" type="month" value="{{ month_start.strftime('%Y-%m') }}" />
+          <button class="btn btn-ghost" type="submit">Go</button>
+        </form>
+      </div>
+      <p class="panel-meta">{{ month_start.strftime("%b %d") }} - {{ month_end.strftime("%b %d, %Y") }}</p>
+
+      {% if budget_rows %}
+        <div class="stack">
+          {% for row in budget_rows %}
+            <article class="budget-row panel-soft">
+              <div class="budget-row-head">
+                <h4>{{ row.budget.category.name }}</h4>
+                <p class="{% if row.is_overspent %}is-overspent{% endif %}">
+                  {{ row.spent|money }} / {{ row.budget.amount_limit|money }}
+                </p>
+              </div>
+              <div class="progress-track">
+                <span class="progress-bar {% if row.is_overspent %}is-overspent{% endif %}" style="width: {{ row.ratio }}%;"></span>
+              </div>
+              <div class="budget-meta">
+                <span>{% if row.remaining >= 0 %}Remaining{% else %}Over{% endif %}: {{ row.remaining|abs|money }}</span>
+                <div class="button-row">
+                  <a class="btn btn-ghost" href="{{ url_for('budgets.edit', budget_id=row.budget.id) }}">Edit</a>
+                  <form
+                    method="post"
+                    action="{{ url_for('budgets.delete', budget_id=row.budget.id) }}"
+                    class="inline form-auto-loading"
+                    data-confirm="Delete this monthly budget?"
+                  >
+                    {{ delete_form.csrf_token }}
+                    <button class="btn btn-danger" type="submit">Delete</button>
+                  </form>
+                </div>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty_state("No budgets in this month", "Set at least one category budget to start monthly monitoring.") }}
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}

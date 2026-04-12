@@ -1,0 +1,86 @@
+{% macro flash_block() -%}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-stack" role="status" aria-live="polite">
+        {% for category, message in messages %}
+          <article class="flash flash-{{ category }}" data-flash-item>
+            <p>{{ message }}</p>
+            <button type="button" class="flash-close" data-dismiss-flash aria-label="Dismiss message">×</button>
+          </article>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+{%- endmacro %}
+
+{% macro page_header(title, subtitle='', actions='') -%}
+  <header class="page-header">
+    <div>
+      <h1>{{ title }}</h1>
+      {% if subtitle %}
+        <p>{{ subtitle }}</p>
+      {% endif %}
+    </div>
+    {% if actions %}
+      <div class="page-actions">{{ actions|safe }}</div>
+    {% endif %}
+  </header>
+{%- endmacro %}
+
+{% macro stat_card(label, value, hint='', tone='neutral') -%}
+  <article class="stat-card stat-{{ tone }}">
+    <p class="stat-label">{{ label }}</p>
+    <p class="stat-value">{{ value }}</p>
+    {% if hint %}
+      <p class="stat-hint">{{ hint }}</p>
+    {% endif %}
+  </article>
+{%- endmacro %}
+
+{% macro badge(text, tone='neutral') -%}
+  <span class="badge badge-{{ tone }}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro empty_state(title, body, action_href=None, action_label=None) -%}
+  <section class="empty-state" role="status">
+    <h3>{{ title }}</h3>
+    <p>{{ body }}</p>
+    {% if action_href and action_label %}
+      <a class="btn btn-primary" href="{{ action_href }}">{{ action_label }}</a>
+    {% endif %}
+  </section>
+{%- endmacro %}
+
+{% macro budget_progress(name, spent, limit, ratio, overspent=False) -%}
+  <article class="budget-row">
+    <div class="budget-row-head">
+      <h4>{{ name }}</h4>
+      <p class="{% if overspent %}is-overspent{% endif %}">
+        {{ spent|money }} / {{ limit|money }}
+      </p>
+    </div>
+    <div class="progress-track" aria-hidden="true">
+      <span class="progress-bar {% if overspent %}is-overspent{% endif %}" style="width: {{ ratio }}%;"></span>
+    </div>
+  </article>
+{%- endmacro %}
+
+{% macro pagination_nav(pagination, endpoint, query_args=None) -%}
+  {% if pagination and pagination.pages > 1 %}
+    <nav class="pagination" aria-label="Pagination">
+      {% if pagination.has_prev %}
+        <a class="btn btn-ghost" href="{{ url_for(endpoint, page=pagination.prev_num, **(query_args or {})) }}">Previous</a>
+      {% else %}
+        <span class="btn btn-ghost is-disabled">Previous</span>
+      {% endif %}
+
+      <span class="pagination-meta">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+
+      {% if pagination.has_next %}
+        <a class="btn btn-ghost" href="{{ url_for(endpoint, page=pagination.next_num, **(query_args or {})) }}">Next</a>
+      {% else %}
+        <span class="btn btn-ghost is-disabled">Next</span>
+      {% endif %}
+    </nav>
+  {% endif %}
+{%- endmacro %}

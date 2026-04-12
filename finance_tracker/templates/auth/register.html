@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% block title %}Create Account · FinTrack{% endblock %}
+
+{% block public_content %}
+  <section class="auth-grid">
+    <article class="auth-brand">
+      <p class="eyebrow">Create account</p>
+      <h1>Build a clean financial operating system.</h1>
+      <p>Start with accounts, categories, and one monthly budget. FinTrack handles the rest.</p>
+    </article>
+
+    <article class="panel auth-panel">
+      <h2>Register</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.full_name, placeholder="Full name") }}
+        {{ field(form.email, placeholder="you@example.com") }}
+        {{ field(form.password, placeholder="At least 8 chars with letters and numbers") }}
+        {{ field(form.confirm_password, placeholder="Repeat password") }}
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+      <p class="auth-meta">
+        Already registered? <a href="{{ url_for('auth.login') }}">Sign in</a>
+      </p>
+    </article>
+  </section>
+{% endblock %}

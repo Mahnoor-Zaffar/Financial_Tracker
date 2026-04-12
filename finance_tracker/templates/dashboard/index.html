@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import badge, budget_progress, empty_state, page_header, stat_card %}
+{% block title %}Dashboard · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header(
+    "Dashboard",
+    "A monthly view of performance, account position, and budget pressure.",
+    '<a class="btn btn-primary" href="' ~ url_for('transactions.create') ~ '">Add transaction</a>'
+  ) }}
+
+  {% if snapshot.has_alerts %}
+    <article class="notice notice-warning">
+      <strong>Attention:</strong>
+      {{ snapshot.overspent_count }} budget{{ '' if snapshot.overspent_count == 1 else 's' }} exceeded in {{ snapshot.month_start.strftime('%B %Y') }}.
+    </article>
+  {% endif %}
+
+  <section class="grid four">
+    {{ stat_card("Income", snapshot.income_total|money, snapshot.month_start.strftime('%B %Y'), "positive") }}
+    {{ stat_card("Expenses", snapshot.expense_total|money, "Tracked outflow", "danger") }}
+    {{ stat_card("Net", snapshot.net_total|money, "Income - expenses", "neutral") }}
+    {{ stat_card("Transfers", snapshot.transfer_total|money, "Internal movements", "neutral") }}
+  </section>
+
+  <section class="grid two">
+    <article class="panel">
+      <div class="panel-head">
+        <h2>Accounts</h2>
+        <a class="link-inline" href="{{ url_for('finance.accounts') }}">Manage</a>
+      </div>
+      {% if snapshot.accounts %}
+        <div class="stack">
+          {% for item in snapshot.accounts %}
+            <div class="list-row">
+              <div>
+                <p class="list-title">{{ item.account.name }}</p>
+                <p class="list-subtitle">
+                  {{ badge(item.account.account_type|title, "neutral") }}
+                  {% if item.account.institution %}
+                    <span>· {{ item.account.institution }}</span>
+                  {% endif %}
+                </p>
+              </div>
+              <p class="list-value">{{ item.balance|money }}</p>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty_state("No accounts yet", "Create your first account to anchor balances and transfers.", url_for('finance.accounts'), "Create account") }}
+      {% endif %}
+    </article>
+
+    <article class="panel">
+      <div class="panel-head">
+        <h2>Budget progress</h2>
+        <a class="link-inline" href="{{ url_for('budgets.index') }}">Open budgets</a>
+      </div>
+      {% if snapshot.budgets %}
+        <div class="stack">
+          {% for item in snapshot.budgets %}
+            {{ budget_progress(item.budget.category.name, item.spent, item.limit, item.utilization, item.is_overspent) }}
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty_state("No budgets this month", "Set category limits to receive proactive spending signals.", url_for('budgets.index'), "Set a budget") }}
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Recent transactions</h2>
+      <a class="link-inline" href="{{ url_for('transactions.index') }}">Open ledger</a>
+    </div>
+    {% if snapshot.recent_transactions %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Type</th>
+              <th>Account</th>
+              <th>Category</th>
+              <th class="text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in snapshot.recent_transactions %}
+              <tr>
+                <td>{{ tx.occurred_on.strftime("%Y-%m-%d") }}</td>
+                <td>{{ tx.description }}</td>
+                <td>
+                  {% if tx.transaction_type == 'income' %}
+                    {{ badge("Income", "positive") }}
+                  {% elif tx.transaction_type == 'expense' %}
+                    {{ badge("Expense", "danger") }}
+                  {% else %}
+                    {{ badge("Transfer", "neutral") }}
+                  {% endif %}
+                </td>
+                <td>{{ tx.account.name }}</td>
+                <td>{{ tx.category.name if tx.category else "—" }}</td>
+                <td class="text-right">{{ tx.amount|money }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {{ empty_state("No transactions yet", "Record your first transaction to activate dashboard insights.", url_for('transactions.create'), "Add transaction") }}
+    {% endif %}
+  </section>
+
+  <section class="grid two">
+    <article class="panel chart-panel">
+      <div class="panel-head">
+        <h2>Income vs Expense</h2>
+        <p class="panel-meta">Monthly trend</p>
+      </div>
+      <canvas id="flowChart" height="180"></canvas>
+    </article>
+    <article class="panel chart-panel">
+      <div class="panel-head">
+        <h2>Spending Mix</h2>
+        <p class="panel-meta">Category distribution</p>
+      </div>
+      <canvas id="categoryChart" height="180"></canvas>
+    </article>
+  </section>
+
+  <script id="flow-chart-data" type="application/json">
+    {{ {"labels": charts.flow_labels, "income": charts.income_points, "expense": charts.expense_points}|tojson }}
+  </script>
+  <script id="category-chart-data" type="application/json">
+    {{ {"labels": charts.category_labels, "values": charts.category_points}|tojson }}
+  </script>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

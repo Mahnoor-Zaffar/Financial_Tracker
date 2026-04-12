@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import empty_state, page_header %}
+{% block title %}Accounts · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Accounts", "Define where your money lives and keep balances trustworthy.") }}
+
+  <section class="grid two align-start">
+    <article class="panel">
+      <h2>Add account</h2>
+      <form method="post" class="stack compact form-auto-loading">
+        {{ form.hidden_tag() }}
+        {{ field(form.name, placeholder="Daily Checking") }}
+        {{ field(form.account_type) }}
+        {{ field(form.institution, placeholder="Bank or provider") }}
+        {{ field(form.opening_balance, placeholder="0.00") }}
+        {{ form.submit(class_="btn btn-primary btn-full") }}
+      </form>
+    </article>
+
+    <article class="panel">
+      <div class="panel-head">
+        <h2>Account registry</h2>
+        <p class="panel-meta">{{ account_rows|length }} accounts</p>
+      </div>
+      {% if account_rows %}
+        <div class="stack">
+          {% for row in account_rows %}
+            <div class="list-row">
+              <div>
+                <p class="list-title">{{ row.account.name }}</p>
+                <p class="list-subtitle">
+                  {{ row.account.account_type|title }}
+                  {% if row.account.institution %}
+                    · {{ row.account.institution }}
+                  {% endif %}
+                  {% if not row.account.is_active %}
+                    · Archived
+                  {% endif %}
+                </p>
+              </div>
+              <div class="row-actions">
+                <p class="list-value">{{ row.balance|money }}</p>
+                <div class="button-row">
+                  <a class="btn btn-ghost" href="{{ url_for('finance.edit_account', account_id=row.account.id) }}">Edit</a>
+                  <form
+                    method="post"
+                    action="{{ url_for('finance.delete_account', account_id=row.account.id) }}"
+                    class="inline form-auto-loading"
+                    data-confirm="Delete this account? Accounts with history will be archived."
+                  >
+                    {{ delete_form.csrf_token }}
+                    <button class="btn btn-danger" type="submit">Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ empty_state("No accounts yet", "Create your first account to unlock balance and transfer tracking.") }}
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}

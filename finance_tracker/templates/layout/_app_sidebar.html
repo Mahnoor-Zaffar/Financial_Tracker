@@ -1,0 +1,42 @@
+{% set endpoint = request.endpoint or '' %}
+{% set accounts_active = endpoint in ['finance.accounts', 'finance.edit_account'] %}
+{% set categories_active = endpoint in ['finance.categories', 'finance.edit_category'] %}
+{% set tags_active = endpoint in ['finance.tags', 'finance.edit_tag'] %}
+<aside class="app-sidebar" data-sidebar>
+  <a class="brand" href="{{ url_for('dashboard.index') }}">
+    <span class="brand-mark">FT</span>
+    <span class="brand-copy">
+      <strong>FinTrack</strong>
+      <small>Personal Finance</small>
+    </span>
+  </a>
+
+  <a class="btn btn-primary btn-full sidebar-cta" href="{{ url_for('transactions.create') }}">New Transaction</a>
+
+  <nav class="sidebar-nav" aria-label="Primary">
+    <a class="sidebar-link {% if endpoint.startswith('dashboard.') %}active{% endif %}" href="{{ url_for('dashboard.index') }}" {% if endpoint.startswith('dashboard.') %}aria-current="page"{% endif %}>Dashboard</a>
+    <a class="sidebar-link {% if endpoint.startswith('transactions.') %}active{% endif %}" href="{{ url_for('transactions.index') }}" {% if endpoint.startswith('transactions.') %}aria-current="page"{% endif %}>Transactions</a>
+    <a class="sidebar-link {% if endpoint.startswith('budgets.') %}active{% endif %}" href="{{ url_for('budgets.index') }}" {% if endpoint.startswith('budgets.') %}aria-current="page"{% endif %}>Budgets</a>
+    <a class="sidebar-link {% if endpoint.startswith('analytics.') %}active{% endif %}" href="{{ url_for('analytics.index') }}" {% if endpoint.startswith('analytics.') %}aria-current="page"{% endif %}>Analytics</a>
+  </nav>
+
+  <p class="sidebar-heading">Setup</p>
+  <nav class="sidebar-nav" aria-label="Finance Setup">
+    <a class="sidebar-link {% if accounts_active %}active{% endif %}" href="{{ url_for('finance.accounts') }}" {% if accounts_active %}aria-current="page"{% endif %}>Accounts</a>
+    <a class="sidebar-link {% if categories_active %}active{% endif %}" href="{{ url_for('finance.categories') }}" {% if categories_active %}aria-current="page"{% endif %}>Categories</a>
+    <a class="sidebar-link {% if tags_active %}active{% endif %}" href="{{ url_for('finance.tags') }}" {% if tags_active %}aria-current="page"{% endif %}>Tags</a>
+    <a class="sidebar-link {% if endpoint.startswith('settings.') %}active{% endif %}" href="{{ url_for('settings.profile') }}" {% if endpoint.startswith('settings.') %}aria-current="page"{% endif %}>Settings</a>
+  </nav>
+
+  <div class="sidebar-user">
+    <p>{{ current_user.full_name }}</p>
+    <small>{{ current_user.email }}</small>
+  </div>
+</aside>
+
+<button
+  class="sidebar-backdrop"
+  data-sidebar-backdrop
+  type="button"
+  aria-label="Close navigation"
+></button>

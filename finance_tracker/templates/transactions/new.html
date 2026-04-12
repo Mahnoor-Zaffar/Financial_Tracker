@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import page_header %}
+{% block title %}Add Transaction · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header("Add transaction", "Capture a new income, expense, or transfer event.") }}
+  <section class="panel narrow">
+    <form method="post" class="stack compact form-auto-loading" data-transaction-form>
+      {{ form.hidden_tag() }}
+      {{ field(form.transaction_type) }}
+      {{ field(form.account_id) }}
+      <div data-transfer-field>{{ field(form.to_account_id) }}</div>
+      <div data-category-field>{{ field(form.category_id) }}</div>
+      {{ field(form.amount, placeholder="0.00") }}
+      {{ field(form.occurred_on) }}
+      {{ field(form.description, placeholder="Groceries, salary, transfer...") }}
+      {{ field(form.notes, helper="Optional context for later review") }}
+      {{ field(form.tag_names, placeholder="essentials, monthly", helper="Comma-separated tags") }}
+      <div class="button-row">
+        {{ form.submit(class_="btn btn-primary") }}
+        <a class="btn btn-muted" href="{{ url_for('transactions.index') }}">Cancel</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

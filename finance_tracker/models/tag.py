@@ -1,0 +1,27 @@
+from finance_tracker.extensions import db
+from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
+
+
+class Tag(UserOwnedMixin, TimestampMixin, db.Model):
+    __tablename__ = "tags"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "name", name="uq_tags_user_name"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(60), nullable=False)
+    color = db.Column(db.String(7), nullable=False, default="#6a7286")
+
+    user = db.relationship("User", back_populates="tags")
+    transaction_links = db.relationship(
+        "TransactionTag",
+        back_populates="tag",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    transactions = db.relationship(
+        "Transaction",
+        secondary="transaction_tags",
+        lazy="selectin",
+        overlaps="transaction_links,tag_links,transaction,tag,tags",
+    )

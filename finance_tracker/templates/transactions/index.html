@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field %}
+{% from "components/ui.html" import badge, empty_state, page_header, pagination_nav, stat_card %}
+{% block title %}Transactions · FinTrack{% endblock %}
+
+{% block app_content %}
+  {{ page_header(
+    "Transactions",
+    "Search and review your ledger with persistent filters and precise controls.",
+    '<a class="btn btn-primary" href="' ~ url_for('transactions.create') ~ '">Add transaction</a>'
+  ) }}
+
+  <section class="grid four">
+    {{ stat_card("Rows", summary.count, "Matching transactions", "neutral") }}
+    {{ stat_card("Income", summary.income|money, "Filtered set", "positive") }}
+    {{ stat_card("Expenses", summary.expense|money, "Filtered set", "danger") }}
+    {{ stat_card("Net", summary.net|money, "Income - expense", "neutral") }}
+  </section>
+
+  <section class="transactions-layout">
+    <aside class="panel filters-panel">
+      <div class="panel-head">
+        <h2>Filters</h2>
+        <a class="link-inline" href="{{ url_for('transactions.index') }}">Reset</a>
+      </div>
+      <form method="get" class="stack compact" id="filters-form">
+        {{ field(filter_form.start_date) }}
+        {{ field(filter_form.end_date) }}
+        {{ field(filter_form.transaction_type) }}
+        {{ field(filter_form.account_id) }}
+        {{ field(filter_form.category_id) }}
+        {{ field(filter_form.tag_id) }}
+        {{ field(filter_form.sort) }}
+        <div class="field-group">
+          <label class="field-label" for="per_page">Rows per page</label>
+          <select class="field-input" id="per_page" name="per_page">
+            {% set selected_per_page = request.args.get('per_page', '20') %}
+            {% for n in ['20', '50', '100'] %}
+              <option value="{{ n }}" {% if selected_per_page == n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary btn-full" type="submit">Apply filters</button>
+      </form>
+    </aside>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Ledger</h2>
+        <p class="panel-meta">{{ pagination.total }} total records</p>
+      </div>
+
+      {% if transactions %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Account</th>
+                <th>Category</th>
+                <th>Tags</th>
+                <th class="text-right">Amount</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in transactions %}
+                <tr>
+                  <td>{{ tx.occurred_on.strftime("%Y-%m-%d") }}</td>
+                  <td>{{ tx.description }}</td>
+                  <td>
+                    {% if tx.transaction_type == "income" %}
+                      {{ badge("Income", "positive") }}
+                    {% elif tx.transaction_type == "expense" %}
+                      {{ badge("Expense", "danger") }}
+                    {% else %}
+                      {{ badge("Transfer", "neutral") }}
+                    {% endif %}
+                  </td>
+                  <td>{{ tx.account.name }}</td>
+                  <td>{{ tx.category.name if tx.category else "—" }}</td>
+                  <td class="tags-cell">
+                    {% if tx.tags %}
+                      {% for tag in tx.tags %}
+                        <span class="tag-chip" style="--tag-color: {{ tag.color }}">{{ tag.name }}</span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-right">{{ tx.amount|money }}</td>
+                  <td class="text-right actions-cell">
+                    <a class="btn btn-ghost" href="{{ url_for('transactions.edit', transaction_id=tx.id) }}">Edit</a>
+                    <form
+                      method="post"
+                      action="{{ url_for('transactions.delete', transaction_id=tx.id) }}"
+                      class="inline form-auto-loading"
+                      data-confirm="Delete this transaction permanently?"
+                    >
+                      {{ delete_form.csrf_token }}
+                      <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {{ pagination_nav(pagination, 'transactions.index', query_args) }}
+      {% else %}
+        {{ empty_state("No matching transactions", "Adjust your filters or add a new transaction.", url_for('transactions.create'), "Add transaction") }}
+      {% endif %}
+    </section>
+  </section>
+{% endblock %}
