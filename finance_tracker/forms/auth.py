@@ -5,9 +5,19 @@ from wtforms.validators import DataRequired, Email, EqualTo, Length, Regexp
 from finance_tracker.forms.shared import not_blank
 
 
+def _normalize_email(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.strip().lower()
+
+
 class RegisterForm(FlaskForm):
     full_name = StringField("Full name", validators=[DataRequired(), not_blank, Length(max=120)])
-    email = EmailField("Email", validators=[DataRequired(), not_blank, Email(), Length(max=255)])
+    email = EmailField(
+        "Email",
+        validators=[DataRequired(), not_blank, Email(), Length(max=255)],
+        filters=[_normalize_email],
+    )
     password = PasswordField(
         "Password",
         validators=[
@@ -28,7 +38,11 @@ class RegisterForm(FlaskForm):
 
 
 class LoginForm(FlaskForm):
-    email = EmailField("Email", validators=[DataRequired(), not_blank, Email(), Length(max=255)])
+    email = EmailField(
+        "Email",
+        validators=[DataRequired(), not_blank, Email(), Length(max=255)],
+        filters=[_normalize_email],
+    )
     password = PasswordField("Password", validators=[DataRequired(), not_blank, Length(max=128)])
     remember = BooleanField("Keep me signed in")
     submit = SubmitField("Sign in")
