@@ -616,6 +616,86 @@ def test_filters_and_pagination_work_together(app, client, login, make_user, see
     assert b"Apply filters" in response.data
 
 
+def test_pagination_preserves_per_page_selection(app, client, login, make_user, seed_finance):
+    user_id = make_user("per-page@example.com")
+    setup = seed_finance(user_id)
+    assert login("per-page@example.com").status_code == 302
+
+    with app.app_context():
+        for idx in range(75):
+            tx = Transaction(
+                user_id=user_id,
+                transaction_type="expense",
+                amount=Decimal("1.00"),
+                description=f"Rows {idx:02d}",
+                occurred_on=date.today(),
+                account_id=setup["checking_id"],
+                category_id=setup["expense_category_id"],
+            )
+            db.session.add(tx)
+        db.session.commit()
+
+    response = client.get("/transactions/?per_page=50&page=1", follow_redirects=True)
+    assert response.status_code == 200
+    assert b"Page 1 of 2" in response.data
+    assert b"per_page=50" in response.data
+
+
+def test_pagination_preserves_per_page_with_filters(app, client, login, make_user, seed_finance):
+    user_id = make_user("per-page-filter@example.com")
+    setup = seed_finance(user_id)
+    assert login("per-page-filter@example.com").status_code == 302
+
+    with app.app_context():
+        for idx in range(75):
+            tx = Transaction(
+                user_id=user_id,
+                transaction_type="expense",
+                amount=Decimal("1.00"),
+                description=f"Filtered {idx:02d}",
+                occurred_on=date.today(),
+                account_id=setup["checking_id"],
+                category_id=setup["expense_category_id"],
+            )
+            db.session.add(tx)
+        db.session.commit()
+
+    response = client.get(
+        f"/transactions/?transaction_type=expense&account_id={setup['checking_id']}&per_page=50&page=2",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"Page 2 of 2" in response.data
+    assert b"transaction_type=expense" in response.data
+    assert b"account_id=" in response.data
+    assert b"per_page=50" in response.data
+
+
+def test_pagination_default_without_per_page_param(app, client, login, make_user, seed_finance):
+    user_id = make_user("per-page-default@example.com")
+    setup = seed_finance(user_id)
+    assert login("per-page-default@example.com").status_code == 302
+
+    with app.app_context():
+        for idx in range(35):
+            tx = Transaction(
+                user_id=user_id,
+                transaction_type="expense",
+                amount=Decimal("1.00"),
+                description=f"Default {idx:02d}",
+                occurred_on=date.today(),
+                account_id=setup["checking_id"],
+                category_id=setup["expense_category_id"],
+            )
+            db.session.add(tx)
+        db.session.commit()
+
+    response = client.get("/transactions/?page=2", follow_redirects=True)
+    assert response.status_code == 200
+    assert b"Page 2 of 2" in response.data
+    assert b"per_page=" not in response.data
+
+
 def test_invalid_date_range_filters_are_ignored(app, client, login, make_user, seed_finance):
     user_id = make_user("filter-range@example.com")
     setup = seed_finance(user_id)

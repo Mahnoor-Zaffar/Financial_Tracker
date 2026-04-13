@@ -133,6 +133,8 @@ def index():
     ):
         if value is not None:
             query_args[key] = _query_arg_value(value)
+    if request.args.get("per_page"):
+        query_args["per_page"] = str(per_page)
     delete_form = DeleteForm()
 
     return render_template(
