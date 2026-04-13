@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from flask_wtf import FlaskForm
 from wtforms import DateField, DecimalField, SelectField, StringField, SubmitField, TextAreaField
-from wtforms.validators import DataRequired, Length, NumberRange, Optional
+from wtforms.validators import DataRequired, Length, NumberRange, Optional, ValidationError
 
 from finance_tracker.forms.shared import not_blank
 
@@ -14,9 +14,26 @@ class TransactionForm(FlaskForm):
         choices=[("expense", "Expense"), ("income", "Income"), ("transfer", "Transfer")],
         validators=[DataRequired()],
     )
-    account_id = SelectField("Account", coerce=int, validators=[DataRequired()])
-    to_account_id = SelectField("To account", coerce=int, validators=[Optional()], default=0)
-    category_id = SelectField("Category", coerce=int, validators=[Optional()], default=0)
+    account_id = SelectField(
+        "Account",
+        coerce=int,
+        validators=[DataRequired()],
+        validate_choice=False,
+    )
+    to_account_id = SelectField(
+        "To account",
+        coerce=int,
+        validators=[Optional()],
+        default=0,
+        validate_choice=False,
+    )
+    category_id = SelectField(
+        "Category",
+        coerce=int,
+        validators=[Optional()],
+        default=0,
+        validate_choice=False,
+    )
     amount = DecimalField(
         "Amount",
         validators=[DataRequired(), NumberRange(min=Decimal("0.01"))],
@@ -34,6 +51,20 @@ class TransactionForm(FlaskForm):
         description="Comma-separated tags",
     )
     submit = SubmitField("Save transaction")
+
+    def validate_category_id(self, field):
+        if self.transaction_type.data == "transfer":
+            return
+
+        if field.data:
+            return
+
+        if len(field.choices) <= 1:
+            raise ValidationError(
+                "Create at least one category before saving income or expense transactions."
+            )
+
+        raise ValidationError("Select a category for income and expense transactions.")
 
 
 class TransactionFilterForm(FlaskForm):

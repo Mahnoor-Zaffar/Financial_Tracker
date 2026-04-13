@@ -18,10 +18,5 @@ class Tag(UserOwnedMixin, TimestampMixin, db.Model):
         back_populates="tag",
         cascade="all, delete-orphan",
         lazy="selectin",
-    )
-    transactions = db.relationship(
-        "Transaction",
-        secondary="transaction_tags",
-        lazy="selectin",
-        overlaps="transaction_links,tag_links,transaction,tag,tags",
+        single_parent=True,
     )

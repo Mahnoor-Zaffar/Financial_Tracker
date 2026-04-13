@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from flask_wtf import FlaskForm
 from wtforms import DecimalField, SelectField, StringField, SubmitField
-from wtforms.validators import DataRequired, Length, NumberRange, Optional, Regexp
+from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional, Regexp
 
 from finance_tracker.forms.shared import not_blank
 
@@ -23,7 +23,7 @@ class AccountForm(FlaskForm):
     institution = StringField("Institution", validators=[Optional(), Length(max=120)])
     opening_balance = DecimalField(
         "Opening balance",
-        validators=[DataRequired(), NumberRange(min=Decimal("0.00"))],
+        validators=[InputRequired(), NumberRange(min=Decimal("0.00"))],
         places=2,
         default=Decimal("0.00"),
     )

@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from finance_tracker.extensions import db
 from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
+from sqlalchemy.ext.associationproxy import association_proxy
 
 
 class TransactionTag(TimestampMixin, db.Model):
@@ -64,10 +65,6 @@ class Transaction(UserOwnedMixin, TimestampMixin, db.Model):
         back_populates="transaction",
         cascade="all, delete-orphan",
         lazy="selectin",
+        single_parent=True,
     )
-    tags = db.relationship(
-        "Tag",
-        secondary="transaction_tags",
-        lazy="selectin",
-        overlaps="tag_links,transaction_links,transaction,tag,transactions",
-    )
+    tags = association_proxy("tag_links", "tag", creator=lambda tag: TransactionTag(tag=tag))

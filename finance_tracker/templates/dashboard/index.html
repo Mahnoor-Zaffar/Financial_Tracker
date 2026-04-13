@@ -113,20 +113,24 @@
     {% endif %}
   </section>
 
-  <section class="grid two">
+  <section class="grid two align-start">
     <article class="panel chart-panel">
       <div class="panel-head">
         <h2>Income vs Expense</h2>
         <p class="panel-meta">Monthly trend</p>
       </div>
-      <canvas id="flowChart" height="180"></canvas>
+      <div class="chart-shell chart-shell-sm">
+        <canvas id="flowChart" height="180"></canvas>
+      </div>
     </article>
     <article class="panel chart-panel">
       <div class="panel-head">
         <h2>Spending Mix</h2>
         <p class="panel-meta">Category distribution</p>
       </div>
-      <canvas id="categoryChart" height="180"></canvas>
+      <div class="chart-shell chart-shell-sm">
+        <canvas id="categoryChart" height="180"></canvas>
+      </div>
     </article>
   </section>
 

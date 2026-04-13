@@ -6,11 +6,23 @@ from decimal import Decimal
 from sqlalchemy import func, or_
 
 from finance_tracker.extensions import db
-from finance_tracker.models import Account, Category, Tag, Transaction
+from finance_tracker.models import Account, Category, Tag, Transaction, TransactionTag
 
 
 class TransactionValidationError(ValueError):
-    pass
+    def __init__(self, message: str, field_errors: dict[str, list[str]] | None = None):
+        super().__init__(message)
+        self.field_errors = field_errors or {}
+
+
+def _validation_error(message: str, **field_errors: str | list[str]) -> TransactionValidationError:
+    normalized_errors: dict[str, list[str]] = {}
+    for field_name, error_value in field_errors.items():
+        if isinstance(error_value, str):
+            normalized_errors[field_name] = [error_value]
+        else:
+            normalized_errors[field_name] = list(error_value)
+    return TransactionValidationError(message, normalized_errors)
 
 
 def as_decimal(value) -> Decimal:
@@ -29,12 +41,11 @@ def account_choices(user_id: int, include_inactive: bool = False):
     return [(row.id, row.name) for row in rows]
 
 
-def category_choices(user_id: int, include_kind: bool = True):
-    rows = (
-        Category.query.filter_by(user_id=user_id)
-        .order_by(Category.kind.asc(), Category.name.asc())
-        .all()
-    )
+def category_choices(user_id: int, include_kind: bool = True, kind: str | None = None):
+    query = Category.query.filter_by(user_id=user_id)
+    if kind is not None:
+        query = query.filter_by(kind=kind)
+    rows = query.order_by(Category.kind.asc(), Category.name.asc()).all()
     if include_kind:
         return [(row.id, f"{row.name} ({row.kind})") for row in rows]
     return [(row.id, row.name) for row in rows]
@@ -45,20 +56,26 @@ def tag_choices(user_id: int):
     return [(row.id, row.name) for row in rows]
 
 
-def validate_account_ownership(account_id: int, user_id: int, *, active_only: bool = False) -> Account:
-    query = Account.query.filter_by(id=account_id, user_id=user_id)
-    if active_only:
-        query = query.filter_by(is_active=True)
-    account = query.first()
+def validate_account_ownership(
+    account_id: int,
+    user_id: int,
+    *,
+    active_only: bool = False,
+    field_name: str = "account",
+    field_key: str = "account_id",
+) -> Account:
+    account = Account.query.filter_by(id=account_id, user_id=user_id).first()
     if account is None:
-        raise TransactionValidationError("Invalid account selected.")
+        raise _validation_error(f"Invalid {field_name} selected.", **{field_key: f"Invalid {field_name} selected."})
+    if active_only and not account.is_active:
+        raise _validation_error(f"Select an active {field_name}.", **{field_key: f"Select an active {field_name}."})
     return account
 
 
 def validate_category_ownership(category_id: int, user_id: int) -> Category:
     category = Category.query.filter_by(id=category_id, user_id=user_id).first()
     if category is None:
-        raise TransactionValidationError("Invalid category selected.")
+        raise _validation_error("Invalid category selected.", category_id="Invalid category selected.")
     return category
 
 
@@ -70,22 +87,45 @@ def validate_transaction_payload(
     to_account_id: int | None,
     category_id: int | None,
 ) -> None:
-    validate_account_ownership(account_id, user_id, active_only=False)
+    validate_account_ownership(
+        account_id,
+        user_id,
+        active_only=True,
+        field_name="account",
+        field_key="account_id",
+    )
 
     if transaction_type == "transfer":
         if not to_account_id:
-            raise TransactionValidationError("Select the destination account for transfers.")
-        validate_account_ownership(to_account_id, user_id, active_only=False)
+            raise _validation_error(
+                "Select the destination account for transfers.",
+                to_account_id="Select the destination account for transfers.",
+            )
+        validate_account_ownership(
+            to_account_id,
+            user_id,
+            active_only=True,
+            field_name="destination account",
+            field_key="to_account_id",
+        )
         if account_id == to_account_id:
-            raise TransactionValidationError("Transfer source and destination must be different.")
+            raise _validation_error(
+                "Transfer source and destination must be different.",
+                account_id="Transfer source and destination must be different.",
+                to_account_id="Transfer source and destination must be different.",
+            )
         return
 
     if not category_id:
-        raise TransactionValidationError("Select a category for income and expense transactions.")
+        raise _validation_error(
+            "Select a category for income and expense transactions.",
+            category_id="Select a category for income and expense transactions.",
+        )
     category = validate_category_ownership(category_id, user_id)
     if category.kind != transaction_type:
-        raise TransactionValidationError(
-            f"Category type mismatch. Choose a {transaction_type} category."
+        raise _validation_error(
+            f"Category type mismatch. Choose a {transaction_type} category.",
+            category_id=f"Category type mismatch. Choose a {transaction_type} category.",
         )
 
 
@@ -219,7 +259,7 @@ def build_transaction_query(
     if category_id:
         query = query.filter(Transaction.category_id == int(category_id))
     if tag_id:
-        query = query.join(Transaction.tags).filter(Tag.id == int(tag_id))
+        query = query.join(Transaction.tag_links).filter(TransactionTag.tag_id == int(tag_id))
     return query
 
 

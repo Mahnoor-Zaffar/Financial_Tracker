@@ -4,13 +4,15 @@
 
 {% block app_content %}
   {{ page_header("Analytics", "Trend and category insights for recent monthly performance.") }}
-  <section class="grid two">
+  <section class="grid two align-start">
     <article class="panel chart-panel">
       <div class="panel-head">
         <h2>Income vs Expense</h2>
         <p class="panel-meta">Last {{ snapshot.flow_labels|length }} months</p>
       </div>
-      <canvas id="flowChart" height="220"></canvas>
+      <div class="chart-shell">
+        <canvas id="flowChart" height="220"></canvas>
+      </div>
     </article>
 
     <article class="panel chart-panel">
@@ -18,11 +20,13 @@
         <h2>Spend by Category</h2>
         <p class="panel-meta">Top categories</p>
       </div>
-      {% if snapshot.category_labels %}
-        <canvas id="categoryChart" height="220"></canvas>
-      {% else %}
-        {{ empty_state("Not enough data", "Add expense transactions to populate category analytics.") }}
-      {% endif %}
+      <div class="chart-shell">
+        {% if snapshot.category_labels %}
+          <canvas id="categoryChart" height="220"></canvas>
+        {% else %}
+          {{ empty_state("Not enough data", "Add expense transactions to populate category analytics.") }}
+        {% endif %}
+      </div>
     </article>
   </section>
 

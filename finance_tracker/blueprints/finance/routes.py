@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from finance_tracker.extensions import db
 from finance_tracker.forms import AccountForm, CategoryForm, DeleteForm, TagForm
-from finance_tracker.models import Account, Category, Tag, Transaction
+from finance_tracker.models import Account, Budget, Category, Tag, Transaction
 from finance_tracker.services import account_balance, get_owned_or_404
 
 bp = Blueprint("finance", __name__, url_prefix="/finance")
@@ -146,8 +146,25 @@ def edit_category(category_id: int):
     form = CategoryForm(prefix="edit", obj=category)
 
     if form.validate_on_submit():
+        proposed_kind = form.kind.data
+        if proposed_kind != category.kind:
+            linked_transaction_count = Transaction.query.filter_by(
+                user_id=current_user.id, category_id=category.id
+            ).count()
+            linked_budget_count = Budget.query.filter_by(
+                user_id=current_user.id, category_id=category.id
+            ).count()
+            if linked_transaction_count > 0 or linked_budget_count > 0:
+                flash(
+                    "Category type cannot be changed after it is used by budgets or transactions.",
+                    "warning",
+                )
+                return render_template(
+                    "finance/category_edit.html", form=form, category=category
+                ), 409
+
         category.name = form.name.data.strip()
-        category.kind = form.kind.data
+        category.kind = proposed_kind
         category.color = form.color.data.strip()
         try:
             db.session.commit()
@@ -171,6 +188,11 @@ def delete_category(category_id: int):
         abort(400)
 
     category = get_owned_or_404(Category, category_id, current_user.id)
+    budget_count = Budget.query.filter_by(user_id=current_user.id, category_id=category.id).count()
+    if budget_count > 0:
+        flash("Category has budgets and cannot be deleted. Remove the budgets first.", "warning")
+        return redirect(url_for("finance.categories"))
+
     db.session.delete(category)
     db.session.commit()
     flash("Category deleted.", "info")

@@ -14,8 +14,15 @@ function applyTheme(theme) {
   window.dispatchEvent(new CustomEvent("fintrack:theme-change", { detail: { theme } }));
 }
 
+function syncThemeToggle(theme) {
+  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+    button.textContent = theme === "dark" ? "Light" : "Dark";
+    button.setAttribute("aria-label", `Switch to ${theme === "dark" ? "light" : "dark"} mode`);
+  });
+}
+
 function initThemeToggle() {
-  applyTheme(getTheme());
+  syncThemeToggle(getTheme());
   document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
       applyTheme(getTheme() === "dark" ? "light" : "dark");
@@ -86,7 +93,41 @@ function initTransactionFormBehavior() {
     const categoryField = form.querySelector("[data-category-field]");
     const transferSelect = form.querySelector('select[name$="to_account_id"]');
     const categorySelect = form.querySelector('select[name$="category_id"]');
+    const categoryOptionsNode = document.getElementById("transaction-category-options");
     if (!typeField || !transferField || !categoryField) return;
+
+    let categoryOptions = null;
+    if (categoryOptionsNode) {
+      try {
+        categoryOptions = JSON.parse(categoryOptionsNode.textContent);
+      } catch (_error) {
+        categoryOptions = null;
+      }
+    }
+
+    const buildCategoryOptions = (kind) => {
+      if (!categorySelect) return;
+      if (!categoryOptions || !Object.prototype.hasOwnProperty.call(categoryOptions, kind)) return;
+      const items = kind === "transfer" ? [] : categoryOptions[kind] || [];
+      const placeholderLabel = kind === "transfer" ? "No category" : "Select category";
+      const currentValue = categorySelect.value;
+      categorySelect.innerHTML = "";
+
+      const placeholder = document.createElement("option");
+      placeholder.value = "0";
+      placeholder.textContent = placeholderLabel;
+      categorySelect.appendChild(placeholder);
+
+      items.forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = String(value);
+        option.textContent = label;
+        categorySelect.appendChild(option);
+      });
+
+      const hasCurrentValue = Array.from(categorySelect.options).some((option) => option.value === currentValue);
+      categorySelect.value = hasCurrentValue ? currentValue : "0";
+    };
 
     const sync = () => {
       const isTransfer = typeField.value === "transfer";
@@ -94,6 +135,7 @@ function initTransactionFormBehavior() {
       categoryField.hidden = isTransfer;
       if (transferSelect) transferSelect.disabled = !isTransfer;
       if (categorySelect) categorySelect.disabled = isTransfer;
+      buildCategoryOptions(isTransfer ? "transfer" : typeField.value);
     };
 
     sync();

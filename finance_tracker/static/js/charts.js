@@ -219,6 +219,7 @@ function buildCategoryChart() {
 }
 
 function mountCharts() {
+  destroyCharts();
   buildFlowChart();
   buildCategoryChart();
 }
@@ -237,6 +238,5 @@ function destroyCharts() {
 document.addEventListener("DOMContentLoaded", mountCharts);
 window.addEventListener("fintrack:theme-change", () => {
   if (typeof Chart === "undefined") return;
-  destroyCharts();
   mountCharts();
 });
