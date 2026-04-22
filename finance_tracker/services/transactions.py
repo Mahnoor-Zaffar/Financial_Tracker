@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, literal, or_, select, union_all
 
 from finance_tracker.extensions import db
 from finance_tracker.models import Account, Category, Tag, Transaction, TransactionTag
@@ -314,54 +314,65 @@ def summarize_transactions(query) -> dict:
     }
 
 
-def account_balance(account_id: int, user_id: int) -> Decimal:
-    opening = (
-        db.session.query(Account.opening_balance)
-        .filter(Account.id == account_id, Account.user_id == user_id)
-        .scalar()
-        or 0
+def account_balance_projection(user_id: int) -> dict[int, Decimal]:
+    opening_rows = select(
+        Account.id.label("account_id"),
+        Account.opening_balance.label("delta"),
+    ).where(Account.user_id == user_id)
+
+    source_transaction_rows = select(
+        Transaction.account_id.label("account_id"),
+        (
+            Transaction.amount
+            * (
+                (Transaction.transaction_type == "income").cast(db.Integer)
+                - (
+                    (Transaction.transaction_type == "expense")
+                    | (Transaction.transaction_type == "transfer")
+                ).cast(db.Integer)
+            )
+        ).label("delta"),
+    ).where(Transaction.user_id == user_id)
+
+    transfer_in_rows = select(
+        Transaction.transfer_account_id.label("account_id"),
+        Transaction.amount.label("delta"),
+    ).where(
+        Transaction.user_id == user_id,
+        Transaction.transaction_type == "transfer",
+        Transaction.transfer_account_id.isnot(None),
     )
 
-    income = (
-        db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0))
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.transaction_type == "income",
-            Transaction.account_id == account_id,
+    balance_rows = union_all(
+        opening_rows,
+        source_transaction_rows,
+        transfer_in_rows,
+    ).subquery()
+
+    rows = (
+        db.session.query(
+            balance_rows.c.account_id,
+            func.coalesce(func.sum(balance_rows.c.delta), literal(0)).label("balance"),
         )
+        .group_by(balance_rows.c.account_id)
+        .all()
+    )
+    return {
+        int(account_id): as_decimal(balance)
+        for account_id, balance in rows
+        if account_id is not None
+    }
+
+
+def account_balance(account_id: int, user_id: int) -> Decimal:
+    balances = account_balance_projection(user_id)
+    if account_id in balances:
+        return balances[account_id]
+    account_exists = (
+        db.session.query(Account.id)
+        .filter(Account.id == account_id, Account.user_id == user_id)
         .scalar()
     )
-    expense = (
-        db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0))
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.transaction_type == "expense",
-            Transaction.account_id == account_id,
-        )
-        .scalar()
-    )
-    transfer_out = (
-        db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0))
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.transaction_type == "transfer",
-            Transaction.account_id == account_id,
-        )
-        .scalar()
-    )
-    transfer_in = (
-        db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0))
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.transaction_type == "transfer",
-            Transaction.transfer_account_id == account_id,
-        )
-        .scalar()
-    )
-    return (
-        as_decimal(opening)
-        + as_decimal(income)
-        - as_decimal(expense)
-        - as_decimal(transfer_out)
-        + as_decimal(transfer_in)
-    )
+    if account_exists is None:
+        return Decimal("0.00")
+    return Decimal("0.00")

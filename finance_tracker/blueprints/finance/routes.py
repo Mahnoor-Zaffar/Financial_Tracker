@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from finance_tracker.extensions import db
 from finance_tracker.forms import AccountForm, CategoryForm, DeleteForm, TagForm
 from finance_tracker.models import Account, Budget, Category, Tag, Transaction
-from finance_tracker.services import account_balance, get_owned_or_404
+from finance_tracker.services import account_balance_projection, get_owned_or_404
 
 bp = Blueprint("finance", __name__, url_prefix="/finance")
 
@@ -38,7 +38,8 @@ def accounts():
         .order_by(Account.is_active.desc(), Account.name.asc())
         .all()
     )
-    account_rows = [{"account": row, "balance": account_balance(row.id, current_user.id)} for row in rows]
+    balances = account_balance_projection(current_user.id)
+    account_rows = [{"account": row, "balance": balances.get(row.id, 0)} for row in rows]
     delete_form = DeleteForm()
     return render_template(
         "finance/accounts.html",

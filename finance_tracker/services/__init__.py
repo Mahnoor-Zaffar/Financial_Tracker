@@ -11,6 +11,7 @@ from finance_tracker.services.reporting import (
 from finance_tracker.services.transactions import (
     TransactionValidationError,
     account_balance,
+    account_balance_projection,
     account_choices,
     as_decimal,
     apply_sorting,
@@ -27,6 +28,7 @@ __all__ = [
     "TransactionValidationError",
     "account_choices",
     "account_balance",
+    "account_balance_projection",
     "as_decimal",
     "apply_sorting",
     "attach_tags",

@@ -4,7 +4,7 @@ from datetime import date
 
 from finance_tracker.models import Account, Transaction
 from finance_tracker.services.reporting import get_budget_progress_rows, get_monthly_totals
-from finance_tracker.services.transactions import account_balance
+from finance_tracker.services.transactions import account_balance_projection
 
 
 def build_dashboard_snapshot(user_id: int, month_start: date | None = None) -> dict:
@@ -23,8 +23,9 @@ def build_dashboard_snapshot(user_id: int, month_start: date | None = None) -> d
         .order_by(Account.name.asc())
         .all()
     )
+    balances = account_balance_projection(user_id)
     account_rows = [
-        {"account": account, "balance": account_balance(account.id, user_id)}
+        {"account": account, "balance": balances.get(account.id, 0)}
         for account in active_accounts
     ]
 
