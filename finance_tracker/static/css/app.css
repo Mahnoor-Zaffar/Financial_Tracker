@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
-  --font-display: "Literata", "Georgia", serif;
-  --font-body: "Manrope", "Inter", "Segoe UI", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-body: "Avenir Next", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
   --bg: #f3f4f1;
   --bg-elevated: #fbfaf6;

@@ -11,7 +11,7 @@ Production-minded personal finance tracker built with Flask, SQLAlchemy, Flask-L
 - Database:
   - Local: SQLite
   - Production: PostgreSQL (`DATABASE_URL`)
-- Frontend: Jinja + custom CSS/JS + Chart.js
+- Frontend: Jinja + custom CSS/JS + self-hosted canvas chart rendering
 - Migrations: Flask-Migrate / Alembic
 - Runtime: Gunicorn (for production)
 - Tests: Pytest
@@ -31,7 +31,32 @@ Key variables:
 - `DATABASE_URL`: PostgreSQL URL in production
 - `SESSION_COOKIE_SECURE`: `true` behind HTTPS
 - `LOG_LEVEL`: `INFO`, `WARNING`, etc.
+- `AUTH_LOGIN_WINDOW_SECONDS`: sliding failed-login window in seconds
+- `AUTH_LOGIN_COOLDOWN_SECONDS`: lockout duration after threshold breach
+- `AUTH_LOGIN_IP_LIMIT`: failed login threshold per client IP
+- `AUTH_LOGIN_ACCOUNT_LIMIT`: failed login threshold per normalized email
 - `TRANSACTIONS_PER_PAGE`, `MAX_TRANSACTIONS_PER_PAGE`
+
+## Auth Abuse Controls
+
+Login is throttled with persistent counters scoped to both:
+
+- normalized email address
+- client IP
+
+Current defaults:
+
+- account threshold: `5`
+- IP threshold: `10`
+- window: `900s`
+- cooldown: `900s`
+
+Important deployment note:
+
+- The login throttle reads client identity from Flask request metadata.
+- If your app is behind a reverse proxy or load balancer, forwarded headers must be sanitized by trusted infrastructure.
+- Do not expose arbitrary client-controlled `X-Forwarded-For` values to the app.
+- If you need application-level proxy normalization, add and document trusted proxy middleware before relying on forwarded headers for security decisions.
 
 ## Local Setup
 
@@ -88,6 +113,15 @@ flask db migrate -m "describe change"
 flask db upgrade
 ```
 
+Deployment-safe order:
+
+1. Build/install dependencies
+2. Set production env vars
+3. Run `flask db upgrade`
+4. Start the web process only after migrations succeed
+
+Do not start new application instances against a newer codebase before the migration step has completed.
+
 ## Test Suite
 
 Run tests:
@@ -122,6 +156,15 @@ Required production env:
 - `SECRET_KEY` (strong random)
 - `DATABASE_URL=postgresql+psycopg://...`
 - `SESSION_COOKIE_SECURE=true`
+- auth throttle env vars tuned for your traffic profile if defaults are not appropriate
+
+Recommended deployment sequence:
+
+1. Build the slug/image
+2. Provision PostgreSQL and set `DATABASE_URL`
+3. Set `SECRET_KEY` and cookie/env settings
+4. Run `flask db upgrade`
+5. Start Gunicorn
 
 ### Option B: Docker
 
@@ -134,6 +177,11 @@ docker run --rm -p 4848:4848 --env-file .env fintrack
 
 The container startup command runs migrations, then serves via Gunicorn.
 
+Operational note:
+
+- This is convenient for a single-instance environment.
+- For multi-instance deployments, prefer a separate release/pre-deploy migration step so only one process performs schema upgrades.
+
 ### Option C: Railway / Procfile platforms
 
 - `Procfile` is included:
@@ -145,9 +193,26 @@ The container startup command runs migrations, then serves via Gunicorn.
 ## Production Notes
 
 - App now enforces non-default `SECRET_KEY` in production mode.
-- Security headers are set (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`).
+- Security headers are set:
+  - `X-Frame-Options: DENY`
+  - `X-Content-Type-Options: nosniff`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+- `Content-Security-Policy` is enabled with a self-hosted script policy:
+  - `default-src 'self'`
+  - `script-src 'self'`
+  - `style-src 'self' 'unsafe-inline'`
+  - `img-src 'self' data:`
+  - `font-src 'self' data:`
+  - `connect-src 'self'`
+  - `object-src 'none'`
+  - `base-uri 'self'`
+  - `form-action 'self'`
+  - `frame-ancestors 'none'`
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` is added when `DEBUG` and `TESTING` are both false.
 - Logging is configured to stdout with configurable log level (`LOG_LEVEL`).
 - CSRF errors redirect safely with user feedback.
+- Front-end assets are self-hosted. The app no longer depends on Google Fonts or Chart.js CDN assets.
 
 ## Project Docs
 
@@ -173,5 +238,4 @@ Optional next steps:
 - Add CI pipeline (lint + tests + migration check)
 - Add password reset and email verification
 - Add CSV import/export and recurring transaction scheduler
-- Add rate limiting for auth endpoints
 # Financial_Tracker

@@ -120,7 +120,11 @@
         <p class="panel-meta">Monthly trend</p>
       </div>
       <div class="chart-shell chart-shell-sm">
-        <canvas id="flowChart" height="180"></canvas>
+        <canvas
+          id="flowChart"
+          height="180"
+          data-chart-payload="{{ {'labels': charts.flow_labels, 'income': charts.income_points, 'expense': charts.expense_points}|tojson|forceescape }}"
+        ></canvas>
       </div>
     </article>
     <article class="panel chart-panel">
@@ -129,20 +133,16 @@
         <p class="panel-meta">Category distribution</p>
       </div>
       <div class="chart-shell chart-shell-sm">
-        <canvas id="categoryChart" height="180"></canvas>
+        <canvas
+          id="categoryChart"
+          height="180"
+          data-chart-payload="{{ {'labels': charts.category_labels, 'values': charts.category_points}|tojson|forceescape }}"
+        ></canvas>
       </div>
     </article>
   </section>
-
-  <script id="flow-chart-data" type="application/json">
-    {{ {"labels": charts.flow_labels, "income": charts.income_points, "expense": charts.expense_points}|tojson }}
-  </script>
-  <script id="category-chart-data" type="application/json">
-    {{ {"labels": charts.category_labels, "values": charts.category_points}|tojson }}
-  </script>
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
 {% endblock %}

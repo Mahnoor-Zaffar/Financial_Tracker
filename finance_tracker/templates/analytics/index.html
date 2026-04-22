@@ -11,7 +11,11 @@
         <p class="panel-meta">Last {{ snapshot.flow_labels|length }} months</p>
       </div>
       <div class="chart-shell">
-        <canvas id="flowChart" height="220"></canvas>
+        <canvas
+          id="flowChart"
+          height="220"
+          data-chart-payload="{{ {'labels': snapshot.flow_labels, 'income': snapshot.income_points, 'expense': snapshot.expense_points}|tojson|forceescape }}"
+        ></canvas>
       </div>
     </article>
 
@@ -22,23 +26,19 @@
       </div>
       <div class="chart-shell">
         {% if snapshot.category_labels %}
-          <canvas id="categoryChart" height="220"></canvas>
+          <canvas
+            id="categoryChart"
+            height="220"
+            data-chart-payload="{{ {'labels': snapshot.category_labels, 'values': snapshot.category_points}|tojson|forceescape }}"
+          ></canvas>
         {% else %}
           {{ empty_state("Not enough data", "Add expense transactions to populate category analytics.") }}
         {% endif %}
       </div>
     </article>
   </section>
-
-  <script id="flow-chart-data" type="application/json">
-    {{ {"labels": snapshot.flow_labels, "income": snapshot.income_points, "expense": snapshot.expense_points}|tojson }}
-  </script>
-  <script id="category-chart-data" type="application/json">
-    {{ {"labels": snapshot.category_labels, "values": snapshot.category_points}|tojson }}
-  </script>
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
 {% endblock %}

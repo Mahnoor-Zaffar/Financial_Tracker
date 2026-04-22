@@ -6,7 +6,12 @@
 {% block app_content %}
   {{ page_header("Add transaction", "Capture a new income, expense, or transfer event.") }}
   <section class="panel narrow">
-    <form method="post" class="stack compact form-auto-loading" data-transaction-form>
+    <form
+      method="post"
+      class="stack compact form-auto-loading"
+      data-transaction-form
+      data-category-options="{{ category_options|tojson|forceescape }}"
+    >
       {{ form.hidden_tag() }}
       {{ field(form.transaction_type) }}
       {{ field(form.account_id) }}
@@ -23,7 +28,4 @@
       </div>
     </form>
   </section>
-  <script id="transaction-category-options" type="application/json">
-    {{ category_options|tojson }}
-  </script>
 {% endblock %}

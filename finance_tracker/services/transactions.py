@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, literal, or_, select, union_all
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from finance_tracker.extensions import db
 from finance_tracker.models import Account, Category, Tag, Transaction, TransactionTag
@@ -163,6 +165,40 @@ def validate_transaction_persistence(transaction: Transaction) -> None:
     )
 
 
+def _load_existing_tags(user_id: int, names: list[str]) -> dict[str, Tag]:
+    return {
+        tag.name.lower(): tag
+        for tag in Tag.query.filter(Tag.user_id == user_id, Tag.name.in_(names)).all()
+    }
+
+
+def _get_or_create_tag(user_id: int, name: str) -> Tag:
+    bind = db.session.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+
+    if dialect_name == "sqlite":
+        insert_stmt = sqlite_insert
+    elif dialect_name == "postgresql":
+        insert_stmt = postgresql_insert
+    else:
+        tag = Tag.query.filter_by(user_id=user_id, name=name).first()
+        if tag is not None:
+            return tag
+        tag = Tag(user_id=user_id, name=name, color="#8d6f47")
+        db.session.add(tag)
+        db.session.flush()
+        return tag
+
+    db.session.execute(
+        insert_stmt(Tag.__table__)
+        .values(user_id=user_id, name=name, color="#8d6f47")
+        .on_conflict_do_nothing(index_elements=["user_id", "name"])
+    )
+    return db.session.execute(
+        select(Tag).where(Tag.user_id == user_id, Tag.name == name)
+    ).scalar_one()
+
+
 def attach_tags(transaction: Transaction, raw_tags: str | None, user_id: int) -> None:
     transaction.tags.clear()
     if not raw_tags:
@@ -180,16 +216,12 @@ def attach_tags(transaction: Transaction, raw_tags: str | None, user_id: int) ->
     if not normalized:
         return
 
-    existing_tags = {
-        tag.name.lower(): tag
-        for tag in Tag.query.filter(Tag.user_id == user_id, Tag.name.in_(normalized)).all()
-    }
+    existing_tags = _load_existing_tags(user_id, normalized)
     for name in normalized:
         tag = existing_tags.get(name)
         if tag is None:
-            tag = Tag(user_id=user_id, name=name, color="#8d6f47")
-            db.session.add(tag)
-            db.session.flush()
+            tag = _get_or_create_tag(user_id, name)
+            existing_tags[name] = tag
         transaction.tags.append(tag)
 
 

@@ -138,6 +138,21 @@ def register_error_handlers(app: Flask) -> None:
 
 
 def register_security_headers(app: Flask) -> None:
+    csp = "; ".join(
+        [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self' data:",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        ]
+    )
+
     @app.after_request
     def add_security_headers(response):
         response.headers.setdefault("X-Frame-Options", "DENY")
@@ -147,6 +162,12 @@ def register_security_headers(app: Flask) -> None:
             "Permissions-Policy",
             "camera=(), microphone=(), geolocation=()",
         )
+        response.headers.setdefault("Content-Security-Policy", csp)
+        if not app.config.get("DEBUG") and not app.config.get("TESTING"):
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
         return response
 
 

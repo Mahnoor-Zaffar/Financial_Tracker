@@ -93,13 +93,13 @@ function initTransactionFormBehavior() {
     const categoryField = form.querySelector("[data-category-field]");
     const transferSelect = form.querySelector('select[name$="to_account_id"]');
     const categorySelect = form.querySelector('select[name$="category_id"]');
-    const categoryOptionsNode = document.getElementById("transaction-category-options");
     if (!typeField || !transferField || !categoryField) return;
 
     let categoryOptions = null;
-    if (categoryOptionsNode) {
+    const categoryOptionsPayload = form.getAttribute("data-category-options");
+    if (categoryOptionsPayload) {
       try {
-        categoryOptions = JSON.parse(categoryOptionsNode.textContent);
+        categoryOptions = JSON.parse(categoryOptionsPayload);
       } catch (_error) {
         categoryOptions = null;
       }
