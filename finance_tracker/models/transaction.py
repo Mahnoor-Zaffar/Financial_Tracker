@@ -31,6 +31,22 @@ class Transaction(UserOwnedMixin, TimestampMixin, db.Model):
             "transaction_type IN ('income', 'expense', 'transfer')",
             name="ck_transactions_type_allowed",
         ),
+        db.CheckConstraint(
+            "("
+            "(transaction_type IN ('income', 'expense') "
+            "AND category_id IS NOT NULL "
+            "AND transfer_account_id IS NULL)"
+            " OR "
+            "(transaction_type = 'transfer' "
+            "AND transfer_account_id IS NOT NULL "
+            "AND category_id IS NULL)"
+            ")",
+            name="ck_transactions_required_links",
+        ),
+        db.CheckConstraint(
+            "transfer_account_id IS NULL OR account_id != transfer_account_id",
+            name="ck_transactions_distinct_transfer_accounts",
+        ),
         db.Index("ix_transactions_user_occurred_on", "user_id", "occurred_on"),
     )
 
@@ -48,7 +64,7 @@ class Transaction(UserOwnedMixin, TimestampMixin, db.Model):
         db.Integer, db.ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
     )
     category_id = db.Column(
-        db.Integer, db.ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+        db.Integer, db.ForeignKey("categories.id", ondelete="RESTRICT"), nullable=True
     )
 
     user = db.relationship("User", back_populates="transactions")

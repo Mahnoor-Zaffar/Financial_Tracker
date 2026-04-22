@@ -114,8 +114,18 @@ def validate_transaction_payload(
                 account_id="Transfer source and destination must be different.",
                 to_account_id="Transfer source and destination must be different.",
             )
+        if category_id is not None:
+            raise _validation_error(
+                "Transfers cannot be assigned a category.",
+                category_id="Transfers cannot be assigned a category.",
+            )
         return
 
+    if to_account_id is not None:
+        raise _validation_error(
+            "Only transfers can set a destination account.",
+            to_account_id="Only transfers can set a destination account.",
+        )
     if not category_id:
         raise _validation_error(
             "Select a category for income and expense transactions.",
@@ -127,6 +137,30 @@ def validate_transaction_payload(
             f"Category type mismatch. Choose a {transaction_type} category.",
             category_id=f"Category type mismatch. Choose a {transaction_type} category.",
         )
+
+
+def validate_transaction_persistence(transaction: Transaction) -> None:
+    user_id = transaction.user_id
+    if not user_id:
+        raise _validation_error(
+            "Transaction must belong to a user before it can be saved.",
+            user_id="Transaction must belong to a user before it can be saved.",
+        )
+
+    transaction_type = (transaction.transaction_type or "").strip()
+    if transaction_type not in {"income", "expense", "transfer"}:
+        raise _validation_error(
+            "Invalid transaction type selected.",
+            transaction_type="Invalid transaction type selected.",
+        )
+
+    validate_transaction_payload(
+        user_id=user_id,
+        transaction_type=transaction_type,
+        account_id=transaction.account_id,
+        to_account_id=transaction.transfer_account_id,
+        category_id=transaction.category_id,
+    )
 
 
 def attach_tags(transaction: Transaction, raw_tags: str | None, user_id: int) -> None:
@@ -172,14 +206,6 @@ def create_transaction(
     notes: str | None = None,
     raw_tags: str | None = None,
 ) -> Transaction:
-    validate_transaction_payload(
-        user_id=user_id,
-        transaction_type=transaction_type,
-        account_id=account_id,
-        to_account_id=to_account_id,
-        category_id=category_id,
-    )
-
     transaction = Transaction(
         user_id=user_id,
         transaction_type=transaction_type,
@@ -191,6 +217,7 @@ def create_transaction(
         transfer_account_id=to_account_id if transaction_type == "transfer" else None,
         category_id=category_id if transaction_type != "transfer" else None,
     )
+    validate_transaction_persistence(transaction)
     db.session.add(transaction)
     db.session.flush()
     attach_tags(transaction, raw_tags, user_id)
@@ -211,14 +238,6 @@ def update_transaction(
     notes: str | None = None,
     raw_tags: str | None = None,
 ) -> Transaction:
-    validate_transaction_payload(
-        user_id=user_id,
-        transaction_type=transaction_type,
-        account_id=account_id,
-        to_account_id=to_account_id,
-        category_id=category_id,
-    )
-
     transaction.transaction_type = transaction_type
     transaction.amount = amount
     transaction.description = description.strip()
@@ -227,6 +246,7 @@ def update_transaction(
     transaction.account_id = account_id
     transaction.transfer_account_id = to_account_id if transaction_type == "transfer" else None
     transaction.category_id = category_id if transaction_type != "transfer" else None
+    validate_transaction_persistence(transaction)
     attach_tags(transaction, raw_tags, user_id)
     return transaction
 

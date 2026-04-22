@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from finance_tracker.extensions import db
 from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
+from sqlalchemy import event
 
 
 class Budget(UserOwnedMixin, TimestampMixin, db.Model):
@@ -22,3 +23,10 @@ class Budget(UserOwnedMixin, TimestampMixin, db.Model):
 
     user = db.relationship("User", back_populates="budgets")
     category = db.relationship("Category", back_populates="budgets")
+
+
+@event.listens_for(Budget, "before_insert")
+@event.listens_for(Budget, "before_update")
+def _normalize_budget_month_start(mapper, connection, target):
+    if target.month_start is not None:
+        target.month_start = target.month_start.replace(day=1)

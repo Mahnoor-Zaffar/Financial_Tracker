@@ -1010,6 +1010,50 @@ def test_budget_edit_updates_existing_budget(app, client, login, make_user, seed
         assert budget.amount_limit == Decimal("180.00")
 
 
+def _month_input_value(response) -> str:
+    html = response.get_data(as_text=True)
+    marker = 'id="month"'
+    idx = html.find(marker)
+    assert idx != -1, "Could not find month input"
+    value_idx = html.find('value="', idx)
+    assert value_idx != -1, "Could not find month input value"
+    value_start = value_idx + len('value="')
+    value_end = html.find('"', value_start)
+    assert value_end != -1, "Could not parse month input value"
+    return html[value_start:value_end]
+
+
+def test_budget_month_query_valid(app, client, login, make_user, seed_finance):
+    user_id = make_user("budget-month-valid@example.com")
+    seed_finance(user_id)
+    assert login("budget-month-valid@example.com").status_code == 302
+
+    response = client.get("/budgets/?month=2024-02", follow_redirects=True)
+    assert response.status_code == 200
+    assert _month_input_value(response) == "2024-02"
+
+
+def test_budget_month_query_invalid_shows_warning(app, client, login, make_user, seed_finance):
+    user_id = make_user("budget-month-invalid@example.com")
+    seed_finance(user_id)
+    assert login("budget-month-invalid@example.com").status_code == 302
+
+    response = client.get("/budgets/?month=2024-13", follow_redirects=True)
+    assert response.status_code == 200
+    assert b"Invalid month selected. Showing the current month instead." in response.data
+    assert _month_input_value(response) == date.today().strftime("%Y-%m")
+
+
+def test_budget_month_query_missing_defaults(app, client, login, make_user, seed_finance):
+    user_id = make_user("budget-month-missing@example.com")
+    seed_finance(user_id)
+    assert login("budget-month-missing@example.com").status_code == 302
+
+    response = client.get("/budgets/", follow_redirects=True)
+    assert response.status_code == 200
+    assert _month_input_value(response) == date.today().strftime("%Y-%m")
+
+
 def test_edit_unused_category_kind_succeeds(app, client, login, make_user):
     user_id = make_user("category-kind-unused@example.com")
     assert login("category-kind-unused@example.com").status_code == 302

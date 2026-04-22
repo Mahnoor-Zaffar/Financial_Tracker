@@ -16,15 +16,15 @@ from finance_tracker.services import (
 bp = Blueprint("budgets", __name__, url_prefix="/budgets")
 
 
-def _selected_month_start() -> date:
+def _selected_month_start() -> tuple[date, bool]:
     raw = request.args.get("month")
     if not raw:
-        return date.today().replace(day=1)
+        return date.today().replace(day=1), False
     try:
         year, month = raw.split("-")
-        return date(int(year), int(month), 1)
+        return date(int(year), int(month), 1), False
     except (TypeError, ValueError):
-        return date.today().replace(day=1)
+        return date.today().replace(day=1), True
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -62,7 +62,9 @@ def index():
             db.session.rollback()
             flash("A budget for that month and category already exists.", "error")
 
-    month_start = _selected_month_start()
+    month_start, month_invalid = _selected_month_start()
+    if month_invalid:
+        flash("Invalid month selected. Showing the current month instead.", "warning")
     month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     budget_rows = get_budget_progress_rows(current_user.id, month_start)
 

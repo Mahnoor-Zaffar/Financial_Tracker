@@ -188,6 +188,16 @@ def delete_category(category_id: int):
         abort(400)
 
     category = get_owned_or_404(Category, category_id, current_user.id)
+    transaction_count = Transaction.query.filter_by(
+        user_id=current_user.id, category_id=category.id
+    ).count()
+    if transaction_count > 0:
+        flash(
+            "Category has historical transactions and cannot be deleted.",
+            "warning",
+        )
+        return redirect(url_for("finance.categories"))
+
     budget_count = Budget.query.filter_by(user_id=current_user.id, category_id=category.id).count()
     if budget_count > 0:
         flash("Category has budgets and cannot be deleted. Remove the budgets first.", "warning")
