@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from finance_tracker.extensions import db
 from finance_tracker.forms import BudgetForm, DeleteForm
-from finance_tracker.models import Budget, Category
+from finance_tracker.models import Budget, BudgetValidationError, Category
 from finance_tracker.services import (
     get_budget_progress_rows,
     get_owned_or_404,
@@ -14,6 +14,32 @@ from finance_tracker.services import (
 )
 
 bp = Blueprint("budgets", __name__, url_prefix="/budgets")
+
+
+def _apply_budget_validation_error(form: BudgetForm, exc: BudgetValidationError) -> bool:
+    field_errors = getattr(exc, "field_errors", {}) or {}
+    attached_any = False
+    for field_name, messages in field_errors.items():
+        field = getattr(form, field_name, None)
+        if field is None:
+            continue
+        attached_any = True
+        if isinstance(messages, str):
+            messages = [messages]
+        for message in messages:
+            if message not in field.errors:
+                field.errors.append(message)
+    return attached_any
+
+
+def _apply_income_category_request_error(form: BudgetForm, user_id: int) -> None:
+    category_id = form.category_id.data
+    if not category_id:
+        return
+    category = Category.query.filter_by(id=category_id, user_id=user_id).first()
+    if category and category.kind != "expense":
+        message = "Budgets can only be assigned to expense categories."
+        form.category_id.errors[:] = [message]
 
 
 def _selected_month_start() -> tuple[date, bool]:
@@ -58,9 +84,15 @@ def index():
             db.session.commit()
             flash("Budget saved.", "success")
             return redirect(url_for("budgets.index", month=normalized_month.strftime("%Y-%m")))
+        except BudgetValidationError as exc:
+            db.session.rollback()
+            if not _apply_budget_validation_error(create_form, exc):
+                flash(str(exc), "error")
         except IntegrityError:
             db.session.rollback()
             flash("A budget for that month and category already exists.", "error")
+    elif create_form.is_submitted():
+        _apply_income_category_request_error(create_form, current_user.id)
 
     month_start, month_invalid = _selected_month_start()
     if month_invalid:
@@ -101,10 +133,17 @@ def edit(budget_id: int):
             db.session.commit()
             flash("Budget updated.", "success")
             return redirect(url_for("budgets.index", month=budget.month_start.strftime("%Y-%m")))
+        except BudgetValidationError as exc:
+            db.session.rollback()
+            if not _apply_budget_validation_error(form, exc):
+                flash(str(exc), "error")
+            return render_template("budgets/edit.html", form=form, budget=budget), 409
         except IntegrityError:
             db.session.rollback()
             flash("A budget for that month and category already exists.", "error")
             return render_template("budgets/edit.html", form=form, budget=budget), 409
+    elif form.is_submitted():
+        _apply_income_category_request_error(form, current_user.id)
 
     return render_template("budgets/edit.html", form=form, budget=budget)
 
