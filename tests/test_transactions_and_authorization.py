@@ -862,7 +862,70 @@ def test_account_opening_balance_zero_is_accepted(app, client, login, make_user)
         assert account.opening_balance == Decimal("0.00")
 
 
-def test_account_edit_to_zero_balance_is_accepted(app, client, login, make_user):
+def test_account_edit_rejects_opening_balance_change_after_transactions_exist(
+    app, client, login, make_user
+):
+    user_id = make_user("account-edit-locked@example.com")
+    assert login("account-edit-locked@example.com").status_code == 302
+
+    with app.app_context():
+        account = Account(
+            user_id=user_id,
+            name="Checking",
+            account_type="checking",
+            opening_balance=Decimal("100.00"),
+        )
+        category = Category(
+            user_id=user_id,
+            name="Groceries",
+            kind="expense",
+            color="#873f2d",
+        )
+        db.session.add_all([account, category])
+        db.session.flush()
+        tx = Transaction(
+            user_id=user_id,
+            transaction_type="expense",
+            amount=Decimal("20.00"),
+            description="Settled expense",
+            occurred_on=date.today(),
+            account_id=account.id,
+            category_id=category.id,
+        )
+        db.session.add(tx)
+        db.session.commit()
+        account_id = account.id
+        original_balance = account_balance(account.id, user_id)
+
+    response = client.post(
+        f"/finance/accounts/{account_id}/edit",
+        data={
+            "edit-name": "Checking",
+            "edit-account_type": "checking",
+            "edit-institution": "Ledger Bank",
+            "edit-opening_balance": "250.00",
+            "edit-submit": "Add account",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 409
+    assert (
+        b"Opening balance cannot be changed after transactions exist. Create a new account or record a balancing transaction instead."
+        in response.data
+    )
+
+    with app.app_context():
+        account = db.session.get(Account, account_id)
+        assert account is not None
+        assert account.opening_balance == Decimal("100.00")
+        assert account.institution is None
+        assert account_balance(account.id, user_id) == original_balance == Decimal("80.00")
+
+
+def test_account_edit_to_zero_balance_is_accepted_before_transactions_exist(
+    app, client, login, make_user
+):
     user_id = make_user("account-edit-zero@example.com")
     assert login("account-edit-zero@example.com").status_code == 302
 
@@ -880,7 +943,7 @@ def test_account_edit_to_zero_balance_is_accepted(app, client, login, make_user)
     response = client.post(
         f"/finance/accounts/{account_id}/edit",
         data={
-            "edit-name": "Savings",
+            "edit-name": "Savings Reserve",
             "edit-account_type": "savings",
             "edit-institution": "",
             "edit-opening_balance": "0.00",
@@ -895,6 +958,7 @@ def test_account_edit_to_zero_balance_is_accepted(app, client, login, make_user)
     with app.app_context():
         account = db.session.get(Account, account_id)
         assert account is not None
+        assert account.name == "Savings Reserve"
         assert account.opening_balance == Decimal("0.00")
 
 
