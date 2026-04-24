@@ -56,6 +56,50 @@ def test_direct_budget_write_using_income_category_is_rejected(app, make_user, s
         assert Budget.query.filter_by(user_id=user_id).count() == 0
 
 
+def test_direct_budget_write_using_foreign_user_category_is_rejected(
+    app, make_user, seed_finance
+):
+    owner_id = make_user("budget-foreign-owner@example.com")
+    other_user_id = make_user("budget-foreign-category@example.com")
+    owner_setup = seed_finance(owner_id)
+    other_setup = seed_finance(other_user_id)
+    month_start = date.today().replace(day=1)
+
+    with app.app_context():
+        foreign_budget = Budget(
+            user_id=owner_id,
+            category_id=other_setup["expense_category_id"],
+            month_start=month_start,
+            amount_limit=Decimal("150.00"),
+        )
+        db.session.add(foreign_budget)
+
+        with pytest.raises(BudgetValidationError, match="your expense categories"):
+            db.session.commit()
+
+        db.session.rollback()
+        assert Budget.query.filter_by(user_id=owner_id).count() == 0
+
+        valid_budget = Budget(
+            user_id=owner_id,
+            category_id=owner_setup["expense_category_id"],
+            month_start=month_start,
+            amount_limit=Decimal("180.00"),
+        )
+        db.session.add(valid_budget)
+        db.session.commit()
+        budget_id = valid_budget.id
+
+        valid_budget.category_id = other_setup["expense_category_id"]
+        with pytest.raises(BudgetValidationError, match="your expense categories"):
+            db.session.commit()
+
+        db.session.rollback()
+        saved = db.session.get(Budget, budget_id)
+        assert saved is not None
+        assert saved.category_id == owner_setup["expense_category_id"]
+
+
 def test_valid_expense_category_budget_still_succeeds(app, make_user, seed_finance):
     user_id = make_user("budget-expense-direct@example.com")
     setup = seed_finance(user_id)
@@ -73,6 +117,45 @@ def test_valid_expense_category_budget_still_succeeds(app, make_user, seed_finan
         saved = db.session.get(Budget, budget.id)
         assert saved is not None
         assert saved.category_id == setup["expense_category_id"]
+
+
+def test_budget_edit_with_same_user_expense_category_still_succeeds(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("budget-expense-route-update@example.com")
+    setup = seed_finance(user_id)
+    assert login("budget-expense-route-update@example.com").status_code == 302
+
+    with app.app_context():
+        budget = Budget(
+            user_id=user_id,
+            category_id=setup["expense_category_id"],
+            month_start=date.today().replace(day=1),
+            amount_limit=Decimal("100.00"),
+        )
+        db.session.add(budget)
+        db.session.commit()
+        budget_id = budget.id
+
+    response = client.post(
+        f"/budgets/{budget_id}/edit",
+        data={
+            "edit-category_id": str(setup["expense_category_id"]),
+            "edit-month_start": date.today().replace(day=1).isoformat(),
+            "edit-amount_limit": "180.00",
+            "edit-submit": "Save budget",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Budget updated." in response.data
+
+    with app.app_context():
+        budget = db.session.get(Budget, budget_id)
+        assert budget is not None
+        assert budget.category_id == setup["expense_category_id"]
+        assert budget.amount_limit == Decimal("180.00")
 
 
 def test_reporting_and_dashboard_only_surface_valid_expense_budgets(

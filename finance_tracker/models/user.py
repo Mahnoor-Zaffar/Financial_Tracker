@@ -33,7 +33,11 @@ class User(UserMixin, TimestampMixin, db.Model):
         lazy="selectin",
     )
     budgets = db.relationship(
-        "Budget", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "Budget",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        overlaps="budgets,category",
     )
 
     def set_password(self, raw_password: str) -> None:

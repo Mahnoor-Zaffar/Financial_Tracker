@@ -24,6 +24,12 @@ def _budget_validation_error(message: str, **field_errors: str | list[str]) -> B
 class Budget(UserOwnedMixin, TimestampMixin, db.Model):
     __tablename__ = "budgets"
     __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["categories.id", "categories.user_id"],
+            ondelete="CASCADE",
+            name="fk_budgets_category_id_user_id_categories",
+        ),
         db.UniqueConstraint(
             "user_id", "category_id", "month_start", name="uq_budgets_user_category_month"
         ),
@@ -31,14 +37,12 @@ class Budget(UserOwnedMixin, TimestampMixin, db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    category_id = db.Column(
-        db.Integer, db.ForeignKey("categories.id", ondelete="CASCADE"), nullable=False
-    )
+    category_id = db.Column(db.Integer, nullable=False)
     month_start = db.Column(db.Date, nullable=False, index=True)
     amount_limit = db.Column(db.Numeric(12, 2), nullable=False, default=Decimal("0.00"))
 
-    user = db.relationship("User", back_populates="budgets")
-    category = db.relationship("Category", back_populates="budgets")
+    user = db.relationship("User", back_populates="budgets", overlaps="budgets,category")
+    category = db.relationship("Category", back_populates="budgets", overlaps="budgets,user")
 
 
 @event.listens_for(Budget, "before_insert")
@@ -47,12 +51,20 @@ def _normalize_budget_month_start(mapper, connection, target):
     if target.month_start is not None:
         target.month_start = target.month_start.replace(day=1)
 
-    category_kind = connection.execute(
-        text("SELECT kind FROM categories WHERE id = :category_id"),
+    category_row = connection.execute(
+        text("SELECT user_id, kind FROM categories WHERE id = :category_id"),
         {"category_id": target.category_id},
-    ).scalar_one_or_none()
-    if category_kind is not None and category_kind != "expense":
+    ).mappings().one_or_none()
+    if category_row is None:
+        return
+
+    if category_row["kind"] != "expense":
         raise _budget_validation_error(
             "Budgets can only be assigned to expense categories.",
             category_id="Budgets can only be assigned to expense categories.",
+        )
+    if target.user_id is not None and category_row["user_id"] != target.user_id:
+        raise _budget_validation_error(
+            "Budgets can only be assigned to your expense categories.",
+            category_id="Budgets can only be assigned to your expense categories.",
         )

@@ -5,6 +5,7 @@ from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
 class Category(UserOwnedMixin, TimestampMixin, db.Model):
     __tablename__ = "categories"
     __table_args__ = (
+        db.UniqueConstraint("id", "user_id", name="uq_categories_id_user"),
         db.UniqueConstraint("user_id", "name", "kind", name="uq_categories_user_kind"),
         db.CheckConstraint(
             "kind IN ('income', 'expense')", name="ck_categories_kind_allowed"
@@ -18,4 +19,9 @@ class Category(UserOwnedMixin, TimestampMixin, db.Model):
 
     user = db.relationship("User", back_populates="categories")
     transactions = db.relationship("Transaction", back_populates="category", lazy="selectin")
-    budgets = db.relationship("Budget", back_populates="category", lazy="selectin")
+    budgets = db.relationship(
+        "Budget",
+        back_populates="category",
+        lazy="selectin",
+        overlaps="user,budgets",
+    )
