@@ -96,6 +96,49 @@ def test_login_accepts_email_with_spaces(app, client):
     assert response.headers["Location"].endswith("/dashboard")
 
 
+def test_login_ignores_external_next_when_host_is_forged(app, client):
+    with app.app_context():
+        user = User(email="redirect@example.com", full_name="Redirect", currency_code="USD", timezone="UTC")
+        user.set_password("Pass12345")
+        db.session.add(user)
+        db.session.commit()
+
+    response = client.post(
+        "/auth/login?next=https://evil.example/pwn",
+        base_url="https://evil.example",
+        data={
+            "email": "redirect@example.com",
+            "password": "Pass12345",
+            "submit": "Sign in",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard")
+
+
+def test_login_allows_internal_relative_next(app, client):
+    with app.app_context():
+        user = User(email="internal-next@example.com", full_name="Internal Next", currency_code="USD", timezone="UTC")
+        user.set_password("Pass12345")
+        db.session.add(user)
+        db.session.commit()
+
+    response = client.post(
+        "/auth/login?next=/transactions/",
+        data={
+            "email": "internal-next@example.com",
+            "password": "Pass12345",
+            "submit": "Sign in",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/transactions/")
+
+
 def test_register_invalid_email_still_fails(client):
     response = client.post(
         "/auth/register",

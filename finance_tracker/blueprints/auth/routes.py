@@ -20,9 +20,9 @@ def _safe_redirect_target(target: str | None):
     if not target:
         return None
     parsed = urlparse(target)
-    if parsed.netloc and parsed.netloc != request.host:
+    if parsed.scheme or parsed.netloc:
         return None
-    if parsed.scheme and parsed.scheme not in {"http", "https"}:
+    if not target.startswith("/") or target.startswith("//"):
         return None
     return target
 
