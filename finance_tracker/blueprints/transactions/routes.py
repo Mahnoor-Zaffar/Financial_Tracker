@@ -2,10 +2,11 @@ from datetime import date
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import and_
 
 from finance_tracker.extensions import db
 from finance_tracker.forms import DeleteForm, TransactionFilterForm, TransactionForm
-from finance_tracker.models import Transaction
+from finance_tracker.models import Account, Transaction
 from finance_tracker.services import (
     TransactionValidationError,
     account_choices,
@@ -23,8 +24,45 @@ from finance_tracker.services import (
 bp = Blueprint("transactions", __name__, url_prefix="/transactions")
 
 
-def _bind_transaction_form_choices(form: TransactionForm, user_id: int):
+def _account_choice_label(account: Account) -> str:
+    return account.name if account.is_active else f"{account.name} (archived)"
+
+
+def _transaction_account_choices(user_id: int, transaction: Transaction | None = None):
     account_opts = account_choices(user_id=user_id, include_inactive=False)
+    if transaction is None:
+        return account_opts
+
+    preserved_ids = {
+        account_id
+        for account_id in (transaction.account_id, transaction.transfer_account_id)
+        if account_id
+    }
+    active_ids = {account_id for account_id, _label in account_opts}
+    missing_ids = preserved_ids - active_ids
+    if not missing_ids:
+        return account_opts
+
+    archived_accounts = (
+        Account.query.filter(
+            and_(
+                Account.user_id == user_id,
+                Account.id.in_(missing_ids),
+                Account.is_active.is_(False),
+            )
+        )
+        .order_by(Account.name.asc())
+        .all()
+    )
+    return account_opts + [
+        (account.id, _account_choice_label(account)) for account in archived_accounts
+    ]
+
+
+def _bind_transaction_form_choices(
+    form: TransactionForm, user_id: int, transaction: Transaction | None = None
+):
+    account_opts = _transaction_account_choices(user_id=user_id, transaction=transaction)
     transaction_type = form.transaction_type.data or "expense"
     category_kind = None if transaction_type == "transfer" else transaction_type
     category_opts = category_choices(user_id=user_id, include_kind=False, kind=category_kind)
@@ -185,7 +223,7 @@ def edit(transaction_id: int):
     transaction = get_owned_or_404(Transaction, transaction_id, current_user.id)
 
     form = TransactionForm(prefix="edit", obj=transaction)
-    category_options = _bind_transaction_form_choices(form, current_user.id)
+    category_options = _bind_transaction_form_choices(form, current_user.id, transaction=transaction)
 
     if request.method == "GET":
         form.to_account_id.data = transaction.transfer_account_id or 0

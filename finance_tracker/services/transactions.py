@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, literal, or_, select, union_all
+from sqlalchemy import func, inspect, literal, or_, select, union_all
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -63,13 +63,14 @@ def validate_account_ownership(
     user_id: int,
     *,
     active_only: bool = False,
+    allow_inactive_id: int | None = None,
     field_name: str = "account",
     field_key: str = "account_id",
 ) -> Account:
     account = Account.query.filter_by(id=account_id, user_id=user_id).first()
     if account is None:
         raise _validation_error(f"Invalid {field_name} selected.", **{field_key: f"Invalid {field_name} selected."})
-    if active_only and not account.is_active:
+    if active_only and not account.is_active and account.id != allow_inactive_id:
         raise _validation_error(f"Select an active {field_name}.", **{field_key: f"Select an active {field_name}."})
     return account
 
@@ -88,11 +89,14 @@ def validate_transaction_payload(
     account_id: int,
     to_account_id: int | None,
     category_id: int | None,
+    allowed_inactive_account_id: int | None = None,
+    allowed_inactive_to_account_id: int | None = None,
 ) -> None:
     validate_account_ownership(
         account_id,
         user_id,
         active_only=True,
+        allow_inactive_id=allowed_inactive_account_id,
         field_name="account",
         field_key="account_id",
     )
@@ -107,6 +111,7 @@ def validate_transaction_payload(
             to_account_id,
             user_id,
             active_only=True,
+            allow_inactive_id=allowed_inactive_to_account_id,
             field_name="destination account",
             field_key="to_account_id",
         )
@@ -156,12 +161,23 @@ def validate_transaction_persistence(transaction: Transaction) -> None:
             transaction_type="Invalid transaction type selected.",
         )
 
+    state = inspect(transaction)
+    allowed_inactive_account_id = None
+    allowed_inactive_to_account_id = None
+    if state.persistent:
+        if not state.attrs.account_id.history.has_changes():
+            allowed_inactive_account_id = transaction.account_id
+        if not state.attrs.transfer_account_id.history.has_changes():
+            allowed_inactive_to_account_id = transaction.transfer_account_id
+
     validate_transaction_payload(
         user_id=user_id,
         transaction_type=transaction_type,
         account_id=transaction.account_id,
         to_account_id=transaction.transfer_account_id,
         category_id=transaction.category_id,
+        allowed_inactive_account_id=allowed_inactive_account_id,
+        allowed_inactive_to_account_id=allowed_inactive_to_account_id,
     )
 
 

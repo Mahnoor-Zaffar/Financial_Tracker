@@ -1374,6 +1374,132 @@ def test_transaction_edit_rejects_archived_account(app, client, login, make_user
         assert tx.account_id == setup["checking_id"]
 
 
+def test_transaction_edit_renders_current_archived_transfer_accounts(app, client, login, make_user):
+    user_id = make_user("edit-archived-transfer-render@example.com")
+    assert login("edit-archived-transfer-render@example.com").status_code == 302
+
+    with app.app_context():
+        checking = Account(
+            user_id=user_id,
+            name="Checking",
+            account_type="checking",
+            opening_balance=Decimal("100.00"),
+        )
+        savings = Account(
+            user_id=user_id,
+            name="Savings",
+            account_type="savings",
+            opening_balance=Decimal("50.00"),
+        )
+        db.session.add_all([checking, savings])
+        db.session.commit()
+
+        tx = Transaction(
+            user_id=user_id,
+            transaction_type="transfer",
+            amount=Decimal("30.00"),
+            description="Archived transfer",
+            occurred_on=date.today(),
+            account_id=checking.id,
+            transfer_account_id=savings.id,
+        )
+        db.session.add(tx)
+        db.session.commit()
+
+        checking.is_active = False
+        savings.is_active = False
+        db.session.commit()
+        tx_id = tx.id
+        checking_id = checking.id
+        savings_id = savings.id
+
+    response = client.get(f"/transactions/{tx_id}/edit")
+    assert response.status_code == 200
+
+    account_html = _select_inner_html(response, "edit-account_id")
+    destination_html = _select_inner_html(response, "edit-to_account_id")
+    assert f'value="{checking_id}"' in account_html
+    assert "Checking (archived)" in account_html
+    assert f'value="{savings_id}"' in destination_html
+    assert "Savings (archived)" in destination_html
+
+
+def test_transaction_edit_round_trips_archived_transfer_accounts_without_mutation(
+    app, client, login, make_user
+):
+    user_id = make_user("edit-archived-transfer-roundtrip@example.com")
+    assert login("edit-archived-transfer-roundtrip@example.com").status_code == 302
+
+    with app.app_context():
+        checking = Account(
+            user_id=user_id,
+            name="Checking",
+            account_type="checking",
+            opening_balance=Decimal("100.00"),
+        )
+        savings = Account(
+            user_id=user_id,
+            name="Savings",
+            account_type="savings",
+            opening_balance=Decimal("50.00"),
+        )
+        expense_category = Category(
+            user_id=user_id,
+            name="Groceries",
+            kind="expense",
+            color="#873f2d",
+        )
+        db.session.add_all([checking, savings, expense_category])
+        db.session.commit()
+
+        tx = Transaction(
+            user_id=user_id,
+            transaction_type="transfer",
+            amount=Decimal("30.00"),
+            description="Archived transfer",
+            occurred_on=date.today(),
+            account_id=checking.id,
+            transfer_account_id=savings.id,
+        )
+        db.session.add(tx)
+        db.session.commit()
+
+        checking.is_active = False
+        savings.is_active = False
+        db.session.commit()
+        tx_id = tx.id
+        checking_id = checking.id
+        savings_id = savings.id
+
+    response = client.post(
+        f"/transactions/{tx_id}/edit",
+        data={
+            "edit-transaction_type": "transfer",
+            "edit-account_id": str(checking_id),
+            "edit-to_account_id": str(savings_id),
+            "edit-category_id": "0",
+            "edit-amount": "30.00",
+            "edit-occurred_on": date.today().isoformat(),
+            "edit-description": "Archived transfer updated",
+            "edit-notes": "changed notes only",
+            "edit-tag_names": "",
+            "edit-submit": "Save transaction",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Transaction updated." in response.data
+
+    with app.app_context():
+        tx = db.session.get(Transaction, tx_id)
+        assert tx is not None
+        assert tx.account_id == checking_id
+        assert tx.transfer_account_id == savings_id
+        assert tx.description == "Archived transfer updated"
+        assert tx.notes == "changed notes only"
+
+
 def test_delete_transaction_without_tags_does_not_warn(
     app, client, login, make_user, seed_finance
 ):
