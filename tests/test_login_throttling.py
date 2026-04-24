@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import finance_tracker.services.auth_throttling as auth_throttling
 from finance_tracker.extensions import db
-from finance_tracker.models import User
+from finance_tracker.models import LoginThrottle, User
 
 
 def _create_user(app, email: str = "throttle@example.com", password: str = "Pass12345") -> None:
@@ -99,3 +99,68 @@ def test_valid_login_works_after_cooldown(app, client, monkeypatch):
 
     assert recovered.status_code == 302
     assert recovered.headers["Location"].endswith("/dashboard")
+
+
+def test_login_throttling_ignores_spoofed_forwarded_ip_by_default(app, client):
+    app.config.update(
+        AUTH_LOGIN_ACCOUNT_LIMIT=99,
+        AUTH_LOGIN_IP_LIMIT=2,
+        AUTH_LOGIN_WINDOW_SECONDS=300,
+        AUTH_LOGIN_COOLDOWN_SECONDS=300,
+    )
+    _create_user(app)
+
+    first = client.post(
+        "/auth/login",
+        data={"email": "throttle@example.com", "password": "Wrong1234", "submit": "Sign in"},
+        headers={"X-Forwarded-For": "198.51.100.10"},
+        environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+        follow_redirects=False,
+    )
+    second = client.post(
+        "/auth/login",
+        data={"email": "throttle@example.com", "password": "Wrong1234", "submit": "Sign in"},
+        headers={"X-Forwarded-For": "198.51.100.11"},
+        environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+        follow_redirects=False,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+    with app.app_context():
+        ip_records = LoginThrottle.query.filter_by(scope="ip").all()
+        assert [record.key for record in ip_records] == ["127.0.0.1"]
+
+
+def test_login_throttling_uses_forwarded_ip_from_trusted_proxy(app, client):
+    app.config.update(
+        AUTH_LOGIN_ACCOUNT_LIMIT=99,
+        AUTH_LOGIN_IP_LIMIT=2,
+        AUTH_LOGIN_WINDOW_SECONDS=300,
+        AUTH_LOGIN_COOLDOWN_SECONDS=300,
+        TRUSTED_PROXY_CIDRS=("127.0.0.1/32",),
+    )
+    _create_user(app)
+
+    first = client.post(
+        "/auth/login",
+        data={"email": "throttle@example.com", "password": "Wrong1234", "submit": "Sign in"},
+        headers={"X-Forwarded-For": "198.51.100.10"},
+        environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+        follow_redirects=False,
+    )
+    second = client.post(
+        "/auth/login",
+        data={"email": "throttle@example.com", "password": "Wrong1234", "submit": "Sign in"},
+        headers={"X-Forwarded-For": "198.51.100.11"},
+        environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+        follow_redirects=False,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    with app.app_context():
+        ip_records = LoginThrottle.query.filter_by(scope="ip").order_by(LoginThrottle.key).all()
+        assert [record.key for record in ip_records] == ["198.51.100.10", "198.51.100.11"]

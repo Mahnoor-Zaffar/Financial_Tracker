@@ -1,6 +1,7 @@
+from ipaddress import ip_address, ip_network
 from urllib.parse import urlparse
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
@@ -27,10 +28,54 @@ def _safe_redirect_target(target: str | None):
     return target
 
 
+def _trusted_proxy_networks():
+    configured = current_app.config.get("TRUSTED_PROXY_CIDRS", ())
+    if isinstance(configured, str):
+        values = configured.split(",")
+    else:
+        values = configured
+
+    networks = []
+    for value in values:
+        entry = str(value).strip()
+        if not entry:
+            continue
+        try:
+            networks.append(ip_network(entry, strict=False))
+        except ValueError:
+            continue
+    return tuple(networks)
+
+
 def _client_ip() -> str:
-    if request.access_route:
-        return request.access_route[0]
-    return request.remote_addr or "unknown"
+    remote_addr = request.remote_addr or "unknown"
+    if not request.remote_addr:
+        return remote_addr
+
+    try:
+        remote_ip = ip_address(request.remote_addr)
+    except ValueError:
+        return remote_addr
+
+    trusted_proxy_networks = _trusted_proxy_networks()
+    if not trusted_proxy_networks:
+        return remote_addr
+    if not any(remote_ip in network for network in trusted_proxy_networks):
+        return remote_addr
+
+    access_route = [value.strip() for value in request.access_route if value.strip()]
+    if not access_route:
+        return remote_addr
+
+    for candidate in reversed(access_route):
+        try:
+            candidate_ip = ip_address(candidate)
+        except ValueError:
+            return remote_addr
+        if not any(candidate_ip in network for network in trusted_proxy_networks):
+            return candidate
+
+    return remote_addr
 
 
 @bp.route("/register", methods=["GET", "POST"])

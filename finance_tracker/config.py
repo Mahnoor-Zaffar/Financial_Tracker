@@ -40,6 +40,11 @@ class BaseConfig:
     AUTH_LOGIN_COOLDOWN_SECONDS = int(os.getenv("AUTH_LOGIN_COOLDOWN_SECONDS", "900"))
     AUTH_LOGIN_IP_LIMIT = int(os.getenv("AUTH_LOGIN_IP_LIMIT", "10"))
     AUTH_LOGIN_ACCOUNT_LIMIT = int(os.getenv("AUTH_LOGIN_ACCOUNT_LIMIT", "5"))
+    TRUSTED_PROXY_CIDRS = tuple(
+        value.strip()
+        for value in os.getenv("TRUSTED_PROXY_CIDRS", "").split(",")
+        if value.strip()
+    )
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
