@@ -3,24 +3,48 @@ from decimal import Decimal
 
 from finance_tracker.extensions import db
 from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
+from sqlalchemy import event
 from sqlalchemy.ext.associationproxy import association_proxy
 
 
 class TransactionTag(TimestampMixin, db.Model):
     __tablename__ = "transaction_tags"
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["transaction_id", "user_id"],
+            ["transactions.id", "transactions.user_id"],
+            ondelete="CASCADE",
+            name="fk_transaction_tags_transaction_user_transactions",
+        ),
+        db.ForeignKeyConstraint(
+            ["tag_id", "user_id"],
+            ["tags.id", "tags.user_id"],
+            ondelete="CASCADE",
+            name="fk_transaction_tags_tag_user_tags",
+        ),
+    )
     transaction_id = db.Column(
         db.Integer,
-        db.ForeignKey("transactions.id", ondelete="CASCADE"),
         primary_key=True,
     )
     tag_id = db.Column(
         db.Integer,
-        db.ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     )
+    user_id = db.Column(db.Integer, nullable=False)
 
-    transaction = db.relationship("Transaction", back_populates="tag_links")
-    tag = db.relationship("Tag", back_populates="transaction_links")
+    transaction = db.relationship(
+        "Transaction",
+        back_populates="tag_links",
+        primaryjoin="TransactionTag.transaction_id == Transaction.id",
+        foreign_keys=[transaction_id],
+    )
+    tag = db.relationship(
+        "Tag",
+        back_populates="transaction_links",
+        primaryjoin="TransactionTag.tag_id == Tag.id",
+        foreign_keys=[tag_id],
+    )
 
 
 class Transaction(UserOwnedMixin, TimestampMixin, db.Model):
@@ -47,6 +71,7 @@ class Transaction(UserOwnedMixin, TimestampMixin, db.Model):
             "transfer_account_id IS NULL OR account_id != transfer_account_id",
             name="ck_transactions_distinct_transfer_accounts",
         ),
+        db.UniqueConstraint("id", "user_id", name="uq_transactions_id_user"),
         db.Index("ix_transactions_user_occurred_on", "user_id", "occurred_on"),
     )
 
@@ -82,5 +107,15 @@ class Transaction(UserOwnedMixin, TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         lazy="selectin",
         single_parent=True,
+        primaryjoin="Transaction.id == TransactionTag.transaction_id",
+        foreign_keys="TransactionTag.transaction_id",
     )
     tags = association_proxy("tag_links", "tag", creator=lambda tag: TransactionTag(tag=tag))
+
+
+@event.listens_for(Transaction.tag_links, "append")
+def _set_transaction_tag_user_id(
+    transaction: Transaction, link: TransactionTag, _initiator
+) -> None:
+    if transaction.user_id is not None:
+        link.user_id = transaction.user_id

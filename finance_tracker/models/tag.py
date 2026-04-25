@@ -5,6 +5,7 @@ from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
 class Tag(UserOwnedMixin, TimestampMixin, db.Model):
     __tablename__ = "tags"
     __table_args__ = (
+        db.UniqueConstraint("id", "user_id", name="uq_tags_id_user"),
         db.UniqueConstraint("user_id", "name", name="uq_tags_user_name"),
     )
 
@@ -19,4 +20,6 @@ class Tag(UserOwnedMixin, TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         lazy="selectin",
         single_parent=True,
+        primaryjoin="Tag.id == TransactionTag.tag_id",
+        foreign_keys="TransactionTag.tag_id",
     )
