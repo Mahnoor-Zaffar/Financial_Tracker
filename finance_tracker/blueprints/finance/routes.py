@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from finance_tracker.extensions import db
 from finance_tracker.forms import AccountForm, CategoryForm, DeleteForm, TagForm
 from finance_tracker.models import Account, Budget, Category, Tag, Transaction
+from finance_tracker.models.account import account_name_key
 from finance_tracker.services import account_balance_projection, get_owned_or_404
 
 bp = Blueprint("finance", __name__, url_prefix="/finance")
@@ -21,27 +22,38 @@ def _linked_account_transaction_count(user_id: int, account_id: int) -> int:
     ).count()
 
 
+def _account_name_exists(user_id: int, name: str, account_id: int | None = None) -> bool:
+    query = Account.query.filter_by(user_id=user_id, name_key=account_name_key(name))
+    if account_id is not None:
+        query = query.filter(Account.id != account_id)
+    return db.session.query(query.exists()).scalar()
+
+
 @bp.route("/accounts", methods=["GET", "POST"])
 @login_required
 def accounts():
     create_form = AccountForm(prefix="create")
 
     if create_form.validate_on_submit():
-        account = Account(
-            user_id=current_user.id,
-            name=create_form.name.data.strip(),
-            account_type=create_form.account_type.data,
-            institution=(create_form.institution.data or "").strip() or None,
-            opening_balance=create_form.opening_balance.data,
-        )
-        db.session.add(account)
-        try:
-            db.session.commit()
-            flash("Account created.", "success")
-            return redirect(url_for("finance.accounts"))
-        except IntegrityError:
-            db.session.rollback()
+        account_name = create_form.name.data.strip()
+        if _account_name_exists(current_user.id, account_name):
             flash("An account with this name already exists.", "error")
+        else:
+            account = Account(
+                user_id=current_user.id,
+                name=account_name,
+                account_type=create_form.account_type.data,
+                institution=(create_form.institution.data or "").strip() or None,
+                opening_balance=create_form.opening_balance.data,
+            )
+            db.session.add(account)
+            try:
+                db.session.commit()
+                flash("Account created.", "success")
+                return redirect(url_for("finance.accounts"))
+            except IntegrityError:
+                db.session.rollback()
+                flash("An account with this name already exists.", "error")
 
     rows = (
         Account.query.filter_by(user_id=current_user.id)
@@ -95,7 +107,20 @@ def edit_account(account_id: int):
                 409,
             )
 
-        account.name = form.name.data.strip()
+        account_name = form.name.data.strip()
+        if _account_name_exists(current_user.id, account_name, account_id=account.id):
+            flash("An account with this name already exists.", "error")
+            return (
+                render_template(
+                    "finance/account_edit.html",
+                    form=form,
+                    account=account,
+                    opening_balance_helper=opening_balance_helper,
+                ),
+                409,
+            )
+
+        account.name = account_name
         account.account_type = form.account_type.data
         account.institution = (form.institution.data or "").strip() or None
         account.opening_balance = proposed_opening_balance

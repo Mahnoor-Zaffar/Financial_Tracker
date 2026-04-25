@@ -870,6 +870,40 @@ def test_account_opening_balance_zero_is_accepted(app, client, login, make_user)
         assert account.opening_balance == Decimal("0.00")
 
 
+def test_account_create_rejects_case_only_duplicate(app, client, login, make_user):
+    user_id = make_user("account-case-create@example.com")
+    assert login("account-case-create@example.com").status_code == 302
+
+    with app.app_context():
+        db.session.add(
+            Account(
+                user_id=user_id,
+                name="Checking",
+                account_type="checking",
+                opening_balance=Decimal("0.00"),
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/finance/accounts",
+        data={
+            "create-name": "checking",
+            "create-account_type": "checking",
+            "create-institution": "",
+            "create-opening_balance": "10.00",
+            "create-submit": "Add account",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"An account with this name already exists." in response.data
+    with app.app_context():
+        accounts = Account.query.filter_by(user_id=user_id).all()
+        assert [account.name for account in accounts] == ["Checking"]
+
+
 def test_account_edit_rejects_opening_balance_change_after_transactions_exist(
     app, client, login, make_user
 ):
@@ -968,6 +1002,48 @@ def test_account_edit_to_zero_balance_is_accepted_before_transactions_exist(
         assert account is not None
         assert account.name == "Savings Reserve"
         assert account.opening_balance == Decimal("0.00")
+
+
+def test_account_edit_rejects_rename_into_case_collision(app, client, login, make_user):
+    user_id = make_user("account-case-edit@example.com")
+    assert login("account-case-edit@example.com").status_code == 302
+
+    with app.app_context():
+        checking = Account(
+            user_id=user_id,
+            name="Checking",
+            account_type="checking",
+            opening_balance=Decimal("0.00"),
+        )
+        savings = Account(
+            user_id=user_id,
+            name="Savings",
+            account_type="savings",
+            opening_balance=Decimal("25.00"),
+        )
+        db.session.add_all([checking, savings])
+        db.session.commit()
+        savings_id = savings.id
+
+    response = client.post(
+        f"/finance/accounts/{savings_id}/edit",
+        data={
+            "edit-name": "checking",
+            "edit-account_type": "savings",
+            "edit-institution": "",
+            "edit-opening_balance": "25.00",
+            "edit-submit": "Add account",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 409
+    assert b"An account with this name already exists." in response.data
+    with app.app_context():
+        account = db.session.get(Account, savings_id)
+        assert account is not None
+        assert account.name == "Savings"
+        assert account.opening_balance == Decimal("25.00")
 
 
 def test_account_opening_balance_blank_fails_when_required(app, client, login, make_user):

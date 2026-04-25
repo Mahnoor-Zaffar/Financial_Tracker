@@ -1,18 +1,26 @@
 from decimal import Decimal
 
+from sqlalchemy import event
+
 from finance_tracker.extensions import db
 from finance_tracker.models.base import TimestampMixin, UserOwnedMixin
+
+
+def account_name_key(name: str | None) -> str:
+    return (name or "").strip().casefold()
 
 
 class Account(UserOwnedMixin, TimestampMixin, db.Model):
     __tablename__ = "accounts"
     __table_args__ = (
         db.UniqueConstraint("user_id", "name", name="uq_accounts_user_name"),
+        db.UniqueConstraint("user_id", "name_key", name="uq_accounts_user_name_key"),
         db.CheckConstraint("opening_balance >= 0", name="ck_accounts_opening_balance"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
+    name_key = db.Column(db.String(255), nullable=False)
     account_type = db.Column(db.String(32), nullable=False, default="checking")
     institution = db.Column(db.String(120), nullable=True)
     opening_balance = db.Column(
@@ -33,3 +41,9 @@ class Account(UserOwnedMixin, TimestampMixin, db.Model):
         foreign_keys="Transaction.transfer_account_id",
         lazy="selectin",
     )
+
+
+@event.listens_for(Account, "before_insert")
+@event.listens_for(Account, "before_update")
+def _set_account_name_key(_mapper, _connection, target: Account) -> None:
+    target.name_key = account_name_key(target.name)
