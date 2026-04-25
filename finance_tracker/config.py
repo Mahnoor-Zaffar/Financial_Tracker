@@ -80,5 +80,14 @@ def get_config(name: str | None):
         "production": ProductionConfig,
         "testing": TestingConfig,
     }
-    resolved = (name or os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development").lower()
-    return config_map.get(resolved, DevelopmentConfig)
+    resolved = (
+        name or os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development"
+    ).strip().lower()
+    try:
+        return config_map[resolved]
+    except KeyError as exc:
+        allowed = ", ".join(sorted(config_map))
+        raise RuntimeError(
+            f"Unknown application environment {resolved!r}. "
+            f"Expected one of: {allowed}."
+        ) from exc
