@@ -7,6 +7,7 @@ from finance_tracker.extensions import db
 from finance_tracker.forms import AccountForm, CategoryForm, DeleteForm, TagForm
 from finance_tracker.models import Account, Budget, Category, Tag, Transaction
 from finance_tracker.models.account import account_name_key
+from finance_tracker.models.category import category_name_key
 from finance_tracker.services import account_balance_projection, get_owned_or_404
 
 bp = Blueprint("finance", __name__, url_prefix="/finance")
@@ -26,6 +27,17 @@ def _account_name_exists(user_id: int, name: str, account_id: int | None = None)
     query = Account.query.filter_by(user_id=user_id, name_key=account_name_key(name))
     if account_id is not None:
         query = query.filter(Account.id != account_id)
+    return db.session.query(query.exists()).scalar()
+
+
+def _category_name_exists(
+    user_id: int, name: str, kind: str, category_id: int | None = None
+) -> bool:
+    query = Category.query.filter_by(
+        user_id=user_id, name_key=category_name_key(name), kind=kind
+    )
+    if category_id is not None:
+        query = query.filter(Category.id != category_id)
     return db.session.query(query.exists()).scalar()
 
 
@@ -182,20 +194,25 @@ def delete_account(account_id: int):
 def categories():
     create_form = CategoryForm(prefix="create")
     if create_form.validate_on_submit():
-        category = Category(
-            user_id=current_user.id,
-            name=create_form.name.data.strip(),
-            kind=create_form.kind.data,
-            color=create_form.color.data.strip(),
-        )
-        db.session.add(category)
-        try:
-            db.session.commit()
-            flash("Category created.", "success")
-            return redirect(url_for("finance.categories"))
-        except IntegrityError:
-            db.session.rollback()
+        category_name = create_form.name.data.strip()
+        category_kind = create_form.kind.data
+        if _category_name_exists(current_user.id, category_name, category_kind):
             flash("That category already exists for this type.", "error")
+        else:
+            category = Category(
+                user_id=current_user.id,
+                name=category_name,
+                kind=category_kind,
+                color=create_form.color.data.strip(),
+            )
+            db.session.add(category)
+            try:
+                db.session.commit()
+                flash("Category created.", "success")
+                return redirect(url_for("finance.categories"))
+            except IntegrityError:
+                db.session.rollback()
+                flash("That category already exists for this type.", "error")
 
     categories_list = (
         Category.query.filter_by(user_id=current_user.id)
@@ -235,7 +252,16 @@ def edit_category(category_id: int):
                     "finance/category_edit.html", form=form, category=category
                 ), 409
 
-        category.name = form.name.data.strip()
+        category_name = form.name.data.strip()
+        if _category_name_exists(
+            current_user.id, category_name, proposed_kind, category_id=category.id
+        ):
+            flash("That category already exists for this type.", "error")
+            return render_template(
+                "finance/category_edit.html", form=form, category=category
+            ), 409
+
+        category.name = category_name
         category.kind = proposed_kind
         category.color = form.color.data.strip()
         try:

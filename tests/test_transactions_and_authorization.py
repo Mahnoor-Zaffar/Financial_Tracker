@@ -1222,6 +1222,33 @@ def test_budget_month_default_uses_user_timezone_when_local_day_differs(
     assert 'value="2024-04-01"' in html
 
 
+def test_category_create_rejects_case_only_duplicate_in_same_kind(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("category-case-create@example.com")
+    setup = seed_finance(user_id)
+    assert login("category-case-create@example.com").status_code == 302
+
+    response = client.post(
+        "/finance/categories",
+        data={
+            "create-name": "groceries",
+            "create-kind": "expense",
+            "create-color": "#123456",
+            "create-submit": "Add category",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"That category already exists for this type." in response.data
+    with app.app_context():
+        categories = Category.query.filter_by(
+            user_id=user_id, kind="expense", name_key="groceries"
+        ).all()
+        assert [category.id for category in categories] == [setup["expense_category_id"]]
+
+
 def test_edit_unused_category_kind_succeeds(app, client, login, make_user):
     user_id = make_user("category-kind-unused@example.com")
     assert login("category-kind-unused@example.com").status_code == 302
@@ -1255,6 +1282,47 @@ def test_edit_unused_category_kind_succeeds(app, client, login, make_user):
         category = db.session.get(Category, category_id)
         assert category is not None
         assert category.kind == "income"
+
+
+def test_category_edit_rejects_rename_into_case_collision(app, client, login, make_user):
+    user_id = make_user("category-case-edit@example.com")
+    assert login("category-case-edit@example.com").status_code == 302
+
+    with app.app_context():
+        groceries = Category(
+            user_id=user_id,
+            name="Groceries",
+            kind="expense",
+            color="#123456",
+        )
+        dining = Category(
+            user_id=user_id,
+            name="Dining",
+            kind="expense",
+            color="#654321",
+        )
+        db.session.add_all([groceries, dining])
+        db.session.commit()
+        dining_id = dining.id
+
+    response = client.post(
+        f"/finance/categories/{dining_id}/edit",
+        data={
+            "edit-name": "groceries",
+            "edit-kind": "expense",
+            "edit-color": "#654321",
+            "edit-submit": "Add category",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 409
+    assert b"That category already exists for this type." in response.data
+    with app.app_context():
+        category = db.session.get(Category, dining_id)
+        assert category is not None
+        assert category.name == "Dining"
+        assert category.kind == "expense"
 
 
 def test_edit_category_kind_linked_to_transactions_is_blocked(
