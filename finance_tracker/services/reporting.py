@@ -6,11 +6,12 @@ from decimal import Decimal
 
 from finance_tracker.extensions import db
 from finance_tracker.models import Budget, Category, Transaction
+from finance_tracker.services.dates import user_local_today, user_local_today_for_user
 from finance_tracker.services.transactions import as_decimal
 
 
-def month_bounds(reference: date | None = None) -> tuple[date, date]:
-    today = reference or date.today()
+def month_bounds(reference: date | None = None, timezone_name: str | None = None) -> tuple[date, date]:
+    today = reference or user_local_today(timezone_name)
     month_start = today.replace(day=1)
     month_end = (month_start + timedelta(days=32)).replace(day=1)
     return month_start, month_end
@@ -111,7 +112,7 @@ def get_monthly_totals(user_id: int, month_start: date) -> dict:
 
 
 def build_monthly_summary_series(user_id: int, months: int = 6) -> dict:
-    today = date.today().replace(day=1)
+    today = user_local_today_for_user(user_id).replace(day=1)
     keys = []
     month = today.month
     year = today.year

@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import date
 
 from finance_tracker.models import Account, Transaction
+from finance_tracker.services.dates import user_local_today_for_user
 from finance_tracker.services.reporting import get_budget_progress_rows, get_monthly_totals
 from finance_tracker.services.transactions import account_balance_projection
 
 
 def build_dashboard_snapshot(user_id: int, month_start: date | None = None) -> dict:
-    month = month_start or date.today().replace(day=1)
+    month = month_start or user_local_today_for_user(user_id).replace(day=1)
     monthly_totals = get_monthly_totals(user_id=user_id, month_start=month)
 
     recent_transactions = (

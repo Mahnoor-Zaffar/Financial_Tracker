@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 import re
 import warnings
 
 from finance_tracker.extensions import db
-from finance_tracker.models import Account, Budget, Category, Tag, Transaction, TransactionTag
+from finance_tracker.models import Account, Budget, Category, Tag, Transaction, TransactionTag, User
 from finance_tracker.services import (
     account_balance,
+    build_dashboard_snapshot,
     build_monthly_summary_series,
     get_budget_progress_rows,
 )
@@ -81,6 +82,13 @@ def _field_error_text(response, field_id: str) -> str:
     assert start != -1 and end != -1, f"Could not parse field error for {field_id!r}"
     message_start = html.find(">", start, end) + 1
     return html[message_start:end]
+
+
+def _set_user_timezone(app, user_id: int, timezone_name: str) -> None:
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.timezone = timezone_name
+        db.session.commit()
 
 
 def test_transfer_and_balance_integrity(app, client, login, make_user, seed_finance):
@@ -1118,6 +1126,26 @@ def test_budget_month_query_missing_defaults(app, client, login, make_user, seed
     assert _month_input_value(response) == date.today().strftime("%Y-%m")
 
 
+def test_budget_month_default_uses_user_timezone_when_local_day_differs(
+    app, client, login, make_user, seed_finance, monkeypatch
+):
+    monkeypatch.setattr(
+        "finance_tracker.services.dates.utc_now",
+        lambda: datetime(2024, 5, 1, 2, 30, tzinfo=UTC),
+    )
+    user_id = make_user("budget-month-timezone@example.com")
+    seed_finance(user_id)
+    _set_user_timezone(app, user_id, "America/New_York")
+    assert login("budget-month-timezone@example.com").status_code == 302
+
+    response = client.get("/budgets/", follow_redirects=True)
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert _month_input_value(response) == "2024-04"
+    assert 'id="create-month_start"' in html
+    assert 'value="2024-04-01"' in html
+
+
 def test_edit_unused_category_kind_succeeds(app, client, login, make_user):
     user_id = make_user("category-kind-unused@example.com")
     assert login("category-kind-unused@example.com").status_code == 302
@@ -1788,6 +1816,73 @@ def test_analytics_series_uses_correct_income_and_expense_points(
         assert snapshot["flow_labels"] == [date.today().strftime("%Y-%m")]
         assert snapshot["income_points"] == ["900.00"]
         assert snapshot["expense_points"] == ["250.00"]
+
+
+def test_timezone_month_rollover_sets_dashboard_and_reporting_windows(
+    app, make_user, seed_finance, monkeypatch
+):
+    monkeypatch.setattr(
+        "finance_tracker.services.dates.utc_now",
+        lambda: datetime(2024, 12, 31, 20, 30, tzinfo=UTC),
+    )
+    user_id = make_user("analytics-month-rollover@example.com")
+    setup = seed_finance(user_id)
+    _set_user_timezone(app, user_id, "Asia/Karachi")
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="income",
+                    amount=Decimal("999.00"),
+                    description="Previous UTC month income",
+                    occurred_on=date(2024, 12, 31),
+                    account_id=setup["checking_id"],
+                    category_id=setup["income_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("999.00"),
+                    description="Previous UTC month expense",
+                    occurred_on=date(2024, 12, 31),
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="income",
+                    amount=Decimal("100.00"),
+                    description="User-local rollover income",
+                    occurred_on=date(2025, 1, 1),
+                    account_id=setup["checking_id"],
+                    category_id=setup["income_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("40.00"),
+                    description="User-local rollover expense",
+                    occurred_on=date(2025, 1, 1),
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+            ]
+        )
+        db.session.commit()
+
+        dashboard = build_dashboard_snapshot(user_id)
+        assert dashboard["month_start"] == date(2025, 1, 1)
+        assert dashboard["month_end"] == date(2025, 1, 31)
+        assert dashboard["income_total"] == Decimal("100.00")
+        assert dashboard["expense_total"] == Decimal("40.00")
+
+        series = build_monthly_summary_series(user_id, months=1)
+        assert series["flow_labels"] == ["2025-01"]
+        assert series["income_points"] == ["100.00"]
+        assert series["expense_points"] == ["40.00"]
+        assert series["category_points"] == ["40.00"]
 
 
 def test_analytics_category_series_excludes_future_expenses(

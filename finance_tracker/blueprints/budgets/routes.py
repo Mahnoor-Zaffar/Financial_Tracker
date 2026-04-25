@@ -12,6 +12,7 @@ from finance_tracker.services import (
     get_owned_or_404,
     normalize_month_start,
 )
+from finance_tracker.services.dates import user_local_today
 
 bp = Blueprint("budgets", __name__, url_prefix="/budgets")
 
@@ -42,15 +43,19 @@ def _apply_income_category_request_error(form: BudgetForm, user_id: int) -> None
         form.category_id.errors[:] = [message]
 
 
+def _default_month_start() -> date:
+    return user_local_today(current_user.timezone).replace(day=1)
+
+
 def _selected_month_start() -> tuple[date, bool]:
     raw = request.args.get("month")
     if not raw:
-        return date.today().replace(day=1), False
+        return _default_month_start(), False
     try:
         year, month = raw.split("-")
         return date(int(year), int(month), 1), False
     except (TypeError, ValueError):
-        return date.today().replace(day=1), True
+        return _default_month_start(), True
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -95,6 +100,8 @@ def index():
         _apply_income_category_request_error(create_form, current_user.id)
 
     month_start, month_invalid = _selected_month_start()
+    if request.method == "GET":
+        create_form.month_start.data = month_start
     if month_invalid:
         flash("Invalid month selected. Showing the current month instead.", "warning")
     month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
