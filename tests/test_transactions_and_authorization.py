@@ -1788,3 +1788,75 @@ def test_analytics_series_uses_correct_income_and_expense_points(
         assert snapshot["flow_labels"] == [date.today().strftime("%Y-%m")]
         assert snapshot["income_points"] == ["900.00"]
         assert snapshot["expense_points"] == ["250.00"]
+
+
+def test_analytics_category_series_excludes_future_expenses(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("analytics-future-category@example.com")
+    setup = seed_finance(user_id)
+    assert login("analytics-future-category@example.com").status_code == 302
+
+    current_month = date.today().replace(day=1)
+    next_month = (current_month + timedelta(days=32)).replace(day=1)
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("25.00"),
+                    description="Current month expense",
+                    occurred_on=current_month,
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("999.00"),
+                    description="Future expense",
+                    occurred_on=next_month,
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+            ]
+        )
+        db.session.commit()
+
+        snapshot = build_monthly_summary_series(user_id, months=1)
+        assert snapshot["flow_labels"] == [current_month.strftime("%Y-%m")]
+        assert snapshot["expense_points"] == ["25.00"]
+        assert snapshot["category_labels"] == ["Groceries"]
+        assert snapshot["category_points"] == ["25.00"]
+
+
+def test_analytics_category_series_includes_in_window_expenses(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("analytics-in-window-category@example.com")
+    setup = seed_finance(user_id)
+    assert login("analytics-in-window-category@example.com").status_code == 302
+
+    current_month = date.today().replace(day=1)
+
+    with app.app_context():
+        db.session.add(
+            Transaction(
+                user_id=user_id,
+                transaction_type="expense",
+                amount=Decimal("42.00"),
+                description="In-window expense",
+                occurred_on=current_month,
+                account_id=setup["checking_id"],
+                category_id=setup["expense_category_id"],
+            )
+        )
+        db.session.commit()
+
+        snapshot = build_monthly_summary_series(user_id, months=1)
+        assert snapshot["flow_labels"] == [current_month.strftime("%Y-%m")]
+        assert snapshot["expense_points"] == ["42.00"]
+        assert snapshot["category_labels"] == ["Groceries"]
+        assert snapshot["category_points"] == ["42.00"]

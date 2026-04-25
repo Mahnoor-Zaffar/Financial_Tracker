@@ -123,10 +123,13 @@ def build_monthly_summary_series(user_id: int, months: int = 6) -> dict:
             year -= 1
     labels = list(reversed(keys))
     earliest = date(int(labels[0][:4]), int(labels[0][5:7]), 1)
+    reporting_window_end = (today + timedelta(days=32)).replace(day=1)
 
     rows = (
         Transaction.query.filter(
-            Transaction.user_id == user_id, Transaction.occurred_on >= earliest
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= earliest,
+            Transaction.occurred_on < reporting_window_end,
         )
         .order_by(Transaction.occurred_on.asc())
         .all()
