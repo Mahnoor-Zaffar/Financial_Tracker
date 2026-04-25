@@ -30,22 +30,31 @@ def get_budget_progress_rows(user_id: int, month_start: date) -> list[dict]:
         .order_by(Category.name.asc())
         .all()
     )
+    category_ids = [budget.category_id for budget in budgets]
+    spend_by_category = {}
+    if category_ids:
+        spend_by_category = {
+            category_id: as_decimal(total)
+            for category_id, total in (
+                db.session.query(
+                    Transaction.category_id,
+                    db.func.coalesce(db.func.sum(Transaction.amount), 0),
+                )
+                .filter(
+                    Transaction.user_id == user_id,
+                    Transaction.transaction_type == "expense",
+                    Transaction.category_id.in_(category_ids),
+                    Transaction.occurred_on >= month_start,
+                    Transaction.occurred_on < month_end,
+                )
+                .group_by(Transaction.category_id)
+                .all()
+            )
+        }
 
     rows: list[dict] = []
     for budget in budgets:
-        spent = (
-            db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0))
-            .filter(
-                Transaction.user_id == user_id,
-                Transaction.transaction_type == "expense",
-                Transaction.category_id == budget.category_id,
-                Transaction.occurred_on >= month_start,
-                Transaction.occurred_on < month_end,
-            )
-            .scalar()
-        )
-
-        spent_amount = as_decimal(spent)
+        spent_amount = spend_by_category.get(budget.category_id, Decimal("0.00"))
         limit_amount = as_decimal(budget.amount_limit)
         ratio = float((spent_amount / limit_amount) * 100) if limit_amount > 0 else 0.0
         rows.append(
