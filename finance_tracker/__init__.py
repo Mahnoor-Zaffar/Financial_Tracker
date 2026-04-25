@@ -3,6 +3,7 @@ from datetime import date
 import logging
 from logging.config import dictConfig
 from pathlib import Path
+import re
 from urllib.parse import urlparse
 
 from flask import Flask, flash, redirect, render_template, request, url_for
@@ -46,9 +47,38 @@ def create_app(config_name: str | None = None) -> Flask:
 def _validate_production_config(app: Flask) -> None:
     if app.config.get("DEBUG") or app.config.get("TESTING"):
         return
-    secret = app.config.get("SECRET_KEY") or ""
-    if secret == "dev-change-this-secret-key":
-        raise RuntimeError("SECRET_KEY must be set in production.")
+    secret = str(app.config.get("SECRET_KEY") or "").strip()
+    normalized = re.sub(r"[^a-z0-9]+", " ", secret.lower()).strip()
+    tokens = {token for token in normalized.split() if token}
+
+    if (
+        not secret
+        or len(secret) < 32
+        or len(set(secret)) < 8
+        or (
+            tokens
+            and tokens
+            <= {
+                "change",
+                "this",
+                "in",
+                "production",
+                "dev",
+                "secret",
+                "key",
+                "example",
+                "placeholder",
+                "sample",
+                "default",
+                "replace",
+                "set",
+                "your",
+                "test",
+                "insecure",
+            }
+        )
+    ):
+        raise RuntimeError("SECRET_KEY must be a strong random value in production.")
 
 
 def configure_logging(app: Flask) -> None:

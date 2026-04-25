@@ -6,9 +6,39 @@ from sqlalchemy.exc import IntegrityError
 from finance_tracker.extensions import db
 from finance_tracker.forms import AccountForm, CategoryForm, DeleteForm, TagForm
 from finance_tracker.models import Account, Budget, Category, Tag, Transaction
+from finance_tracker.models.account import account_name_key
+from finance_tracker.models.category import category_name_key
 from finance_tracker.services import account_balance_projection, get_owned_or_404
 
 bp = Blueprint("finance", __name__, url_prefix="/finance")
+
+
+def _linked_account_transaction_count(user_id: int, account_id: int) -> int:
+    return Transaction.query.filter(
+        Transaction.user_id == user_id,
+        or_(
+            Transaction.account_id == account_id,
+            Transaction.transfer_account_id == account_id,
+        ),
+    ).count()
+
+
+def _account_name_exists(user_id: int, name: str, account_id: int | None = None) -> bool:
+    query = Account.query.filter_by(user_id=user_id, name_key=account_name_key(name))
+    if account_id is not None:
+        query = query.filter(Account.id != account_id)
+    return db.session.query(query.exists()).scalar()
+
+
+def _category_name_exists(
+    user_id: int, name: str, kind: str, category_id: int | None = None
+) -> bool:
+    query = Category.query.filter_by(
+        user_id=user_id, name_key=category_name_key(name), kind=kind
+    )
+    if category_id is not None:
+        query = query.filter(Category.id != category_id)
+    return db.session.query(query.exists()).scalar()
 
 
 @bp.route("/accounts", methods=["GET", "POST"])
@@ -17,21 +47,25 @@ def accounts():
     create_form = AccountForm(prefix="create")
 
     if create_form.validate_on_submit():
-        account = Account(
-            user_id=current_user.id,
-            name=create_form.name.data.strip(),
-            account_type=create_form.account_type.data,
-            institution=(create_form.institution.data or "").strip() or None,
-            opening_balance=create_form.opening_balance.data,
-        )
-        db.session.add(account)
-        try:
-            db.session.commit()
-            flash("Account created.", "success")
-            return redirect(url_for("finance.accounts"))
-        except IntegrityError:
-            db.session.rollback()
+        account_name = create_form.name.data.strip()
+        if _account_name_exists(current_user.id, account_name):
             flash("An account with this name already exists.", "error")
+        else:
+            account = Account(
+                user_id=current_user.id,
+                name=account_name,
+                account_type=create_form.account_type.data,
+                institution=(create_form.institution.data or "").strip() or None,
+                opening_balance=create_form.opening_balance.data,
+            )
+            db.session.add(account)
+            try:
+                db.session.commit()
+                flash("Account created.", "success")
+                return redirect(url_for("finance.accounts"))
+            except IntegrityError:
+                db.session.rollback()
+                flash("An account with this name already exists.", "error")
 
     rows = (
         Account.query.filter_by(user_id=current_user.id)
@@ -54,12 +88,54 @@ def accounts():
 def edit_account(account_id: int):
     account = get_owned_or_404(Account, account_id, current_user.id)
     form = AccountForm(prefix="edit", obj=account)
+    linked_transaction_count = _linked_account_transaction_count(current_user.id, account.id)
+    opening_balance_locked = linked_transaction_count > 0
+    opening_balance_helper = (
+        "Opening balance is locked after transactions exist to preserve historical balances."
+        if opening_balance_locked
+        else ""
+    )
+    if opening_balance_locked:
+        form.opening_balance.render_kw = {
+            **(form.opening_balance.render_kw or {}),
+            "readonly": True,
+            "aria-readonly": "true",
+        }
 
     if form.validate_on_submit():
-        account.name = form.name.data.strip()
+        proposed_opening_balance = form.opening_balance.data
+        if opening_balance_locked and proposed_opening_balance != account.opening_balance:
+            flash(
+                "Opening balance cannot be changed after transactions exist. Create a new account or record a balancing transaction instead.",
+                "warning",
+            )
+            return (
+                render_template(
+                    "finance/account_edit.html",
+                    form=form,
+                    account=account,
+                    opening_balance_helper=opening_balance_helper,
+                ),
+                409,
+            )
+
+        account_name = form.name.data.strip()
+        if _account_name_exists(current_user.id, account_name, account_id=account.id):
+            flash("An account with this name already exists.", "error")
+            return (
+                render_template(
+                    "finance/account_edit.html",
+                    form=form,
+                    account=account,
+                    opening_balance_helper=opening_balance_helper,
+                ),
+                409,
+            )
+
+        account.name = account_name
         account.account_type = form.account_type.data
         account.institution = (form.institution.data or "").strip() or None
-        account.opening_balance = form.opening_balance.data
+        account.opening_balance = proposed_opening_balance
         try:
             db.session.commit()
             flash("Account updated.", "success")
@@ -67,9 +143,22 @@ def edit_account(account_id: int):
         except IntegrityError:
             db.session.rollback()
             flash("An account with this name already exists.", "error")
-            return render_template("finance/account_edit.html", form=form, account=account), 409
+            return (
+                render_template(
+                    "finance/account_edit.html",
+                    form=form,
+                    account=account,
+                    opening_balance_helper=opening_balance_helper,
+                ),
+                409,
+            )
 
-    return render_template("finance/account_edit.html", form=form, account=account)
+    return render_template(
+        "finance/account_edit.html",
+        form=form,
+        account=account,
+        opening_balance_helper=opening_balance_helper,
+    )
 
 
 @bp.route("/accounts/<int:account_id>/delete", methods=["POST"])
@@ -80,13 +169,7 @@ def delete_account(account_id: int):
         abort(400)
 
     account = get_owned_or_404(Account, account_id, current_user.id)
-    linked_transaction_count = Transaction.query.filter(
-        Transaction.user_id == current_user.id,
-        or_(
-            Transaction.account_id == account.id,
-            Transaction.transfer_account_id == account.id,
-        ),
-    ).count()
+    linked_transaction_count = _linked_account_transaction_count(current_user.id, account.id)
 
     if linked_transaction_count > 0:
         if account.is_active:
@@ -111,20 +194,25 @@ def delete_account(account_id: int):
 def categories():
     create_form = CategoryForm(prefix="create")
     if create_form.validate_on_submit():
-        category = Category(
-            user_id=current_user.id,
-            name=create_form.name.data.strip(),
-            kind=create_form.kind.data,
-            color=create_form.color.data.strip(),
-        )
-        db.session.add(category)
-        try:
-            db.session.commit()
-            flash("Category created.", "success")
-            return redirect(url_for("finance.categories"))
-        except IntegrityError:
-            db.session.rollback()
+        category_name = create_form.name.data.strip()
+        category_kind = create_form.kind.data
+        if _category_name_exists(current_user.id, category_name, category_kind):
             flash("That category already exists for this type.", "error")
+        else:
+            category = Category(
+                user_id=current_user.id,
+                name=category_name,
+                kind=category_kind,
+                color=create_form.color.data.strip(),
+            )
+            db.session.add(category)
+            try:
+                db.session.commit()
+                flash("Category created.", "success")
+                return redirect(url_for("finance.categories"))
+            except IntegrityError:
+                db.session.rollback()
+                flash("That category already exists for this type.", "error")
 
     categories_list = (
         Category.query.filter_by(user_id=current_user.id)
@@ -164,7 +252,16 @@ def edit_category(category_id: int):
                     "finance/category_edit.html", form=form, category=category
                 ), 409
 
-        category.name = form.name.data.strip()
+        category_name = form.name.data.strip()
+        if _category_name_exists(
+            current_user.id, category_name, proposed_kind, category_id=category.id
+        ):
+            flash("That category already exists for this type.", "error")
+            return render_template(
+                "finance/category_edit.html", form=form, category=category
+            ), 409
+
+        category.name = category_name
         category.kind = proposed_kind
         category.color = form.color.data.strip()
         try:

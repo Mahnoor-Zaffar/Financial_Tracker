@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 import re
 import warnings
 
 from finance_tracker.extensions import db
-from finance_tracker.models import Account, Budget, Category, Tag, Transaction, TransactionTag
+from finance_tracker.models import Account, Budget, Category, Tag, Transaction, TransactionTag, User
 from finance_tracker.services import (
     account_balance,
+    build_dashboard_snapshot,
     build_monthly_summary_series,
     get_budget_progress_rows,
 )
@@ -81,6 +82,13 @@ def _field_error_text(response, field_id: str) -> str:
     assert start != -1 and end != -1, f"Could not parse field error for {field_id!r}"
     message_start = html.find(">", start, end) + 1
     return html[message_start:end]
+
+
+def _set_user_timezone(app, user_id: int, timezone_name: str) -> None:
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.timezone = timezone_name
+        db.session.commit()
 
 
 def test_transfer_and_balance_integrity(app, client, login, make_user, seed_finance):
@@ -862,7 +870,104 @@ def test_account_opening_balance_zero_is_accepted(app, client, login, make_user)
         assert account.opening_balance == Decimal("0.00")
 
 
-def test_account_edit_to_zero_balance_is_accepted(app, client, login, make_user):
+def test_account_create_rejects_case_only_duplicate(app, client, login, make_user):
+    user_id = make_user("account-case-create@example.com")
+    assert login("account-case-create@example.com").status_code == 302
+
+    with app.app_context():
+        db.session.add(
+            Account(
+                user_id=user_id,
+                name="Checking",
+                account_type="checking",
+                opening_balance=Decimal("0.00"),
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/finance/accounts",
+        data={
+            "create-name": "checking",
+            "create-account_type": "checking",
+            "create-institution": "",
+            "create-opening_balance": "10.00",
+            "create-submit": "Add account",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"An account with this name already exists." in response.data
+    with app.app_context():
+        accounts = Account.query.filter_by(user_id=user_id).all()
+        assert [account.name for account in accounts] == ["Checking"]
+
+
+def test_account_edit_rejects_opening_balance_change_after_transactions_exist(
+    app, client, login, make_user
+):
+    user_id = make_user("account-edit-locked@example.com")
+    assert login("account-edit-locked@example.com").status_code == 302
+
+    with app.app_context():
+        account = Account(
+            user_id=user_id,
+            name="Checking",
+            account_type="checking",
+            opening_balance=Decimal("100.00"),
+        )
+        category = Category(
+            user_id=user_id,
+            name="Groceries",
+            kind="expense",
+            color="#873f2d",
+        )
+        db.session.add_all([account, category])
+        db.session.flush()
+        tx = Transaction(
+            user_id=user_id,
+            transaction_type="expense",
+            amount=Decimal("20.00"),
+            description="Settled expense",
+            occurred_on=date.today(),
+            account_id=account.id,
+            category_id=category.id,
+        )
+        db.session.add(tx)
+        db.session.commit()
+        account_id = account.id
+        original_balance = account_balance(account.id, user_id)
+
+    response = client.post(
+        f"/finance/accounts/{account_id}/edit",
+        data={
+            "edit-name": "Checking",
+            "edit-account_type": "checking",
+            "edit-institution": "Ledger Bank",
+            "edit-opening_balance": "250.00",
+            "edit-submit": "Add account",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 409
+    assert (
+        b"Opening balance cannot be changed after transactions exist. Create a new account or record a balancing transaction instead."
+        in response.data
+    )
+
+    with app.app_context():
+        account = db.session.get(Account, account_id)
+        assert account is not None
+        assert account.opening_balance == Decimal("100.00")
+        assert account.institution is None
+        assert account_balance(account.id, user_id) == original_balance == Decimal("80.00")
+
+
+def test_account_edit_to_zero_balance_is_accepted_before_transactions_exist(
+    app, client, login, make_user
+):
     user_id = make_user("account-edit-zero@example.com")
     assert login("account-edit-zero@example.com").status_code == 302
 
@@ -880,7 +985,7 @@ def test_account_edit_to_zero_balance_is_accepted(app, client, login, make_user)
     response = client.post(
         f"/finance/accounts/{account_id}/edit",
         data={
-            "edit-name": "Savings",
+            "edit-name": "Savings Reserve",
             "edit-account_type": "savings",
             "edit-institution": "",
             "edit-opening_balance": "0.00",
@@ -895,7 +1000,50 @@ def test_account_edit_to_zero_balance_is_accepted(app, client, login, make_user)
     with app.app_context():
         account = db.session.get(Account, account_id)
         assert account is not None
+        assert account.name == "Savings Reserve"
         assert account.opening_balance == Decimal("0.00")
+
+
+def test_account_edit_rejects_rename_into_case_collision(app, client, login, make_user):
+    user_id = make_user("account-case-edit@example.com")
+    assert login("account-case-edit@example.com").status_code == 302
+
+    with app.app_context():
+        checking = Account(
+            user_id=user_id,
+            name="Checking",
+            account_type="checking",
+            opening_balance=Decimal("0.00"),
+        )
+        savings = Account(
+            user_id=user_id,
+            name="Savings",
+            account_type="savings",
+            opening_balance=Decimal("25.00"),
+        )
+        db.session.add_all([checking, savings])
+        db.session.commit()
+        savings_id = savings.id
+
+    response = client.post(
+        f"/finance/accounts/{savings_id}/edit",
+        data={
+            "edit-name": "checking",
+            "edit-account_type": "savings",
+            "edit-institution": "",
+            "edit-opening_balance": "25.00",
+            "edit-submit": "Add account",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 409
+    assert b"An account with this name already exists." in response.data
+    with app.app_context():
+        account = db.session.get(Account, savings_id)
+        assert account is not None
+        assert account.name == "Savings"
+        assert account.opening_balance == Decimal("25.00")
 
 
 def test_account_opening_balance_blank_fails_when_required(app, client, login, make_user):
@@ -1054,6 +1202,53 @@ def test_budget_month_query_missing_defaults(app, client, login, make_user, seed
     assert _month_input_value(response) == date.today().strftime("%Y-%m")
 
 
+def test_budget_month_default_uses_user_timezone_when_local_day_differs(
+    app, client, login, make_user, seed_finance, monkeypatch
+):
+    monkeypatch.setattr(
+        "finance_tracker.services.dates.utc_now",
+        lambda: datetime(2024, 5, 1, 2, 30, tzinfo=UTC),
+    )
+    user_id = make_user("budget-month-timezone@example.com")
+    seed_finance(user_id)
+    _set_user_timezone(app, user_id, "America/New_York")
+    assert login("budget-month-timezone@example.com").status_code == 302
+
+    response = client.get("/budgets/", follow_redirects=True)
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert _month_input_value(response) == "2024-04"
+    assert 'id="create-month_start"' in html
+    assert 'value="2024-04-01"' in html
+
+
+def test_category_create_rejects_case_only_duplicate_in_same_kind(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("category-case-create@example.com")
+    setup = seed_finance(user_id)
+    assert login("category-case-create@example.com").status_code == 302
+
+    response = client.post(
+        "/finance/categories",
+        data={
+            "create-name": "groceries",
+            "create-kind": "expense",
+            "create-color": "#123456",
+            "create-submit": "Add category",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"That category already exists for this type." in response.data
+    with app.app_context():
+        categories = Category.query.filter_by(
+            user_id=user_id, kind="expense", name_key="groceries"
+        ).all()
+        assert [category.id for category in categories] == [setup["expense_category_id"]]
+
+
 def test_edit_unused_category_kind_succeeds(app, client, login, make_user):
     user_id = make_user("category-kind-unused@example.com")
     assert login("category-kind-unused@example.com").status_code == 302
@@ -1087,6 +1282,47 @@ def test_edit_unused_category_kind_succeeds(app, client, login, make_user):
         category = db.session.get(Category, category_id)
         assert category is not None
         assert category.kind == "income"
+
+
+def test_category_edit_rejects_rename_into_case_collision(app, client, login, make_user):
+    user_id = make_user("category-case-edit@example.com")
+    assert login("category-case-edit@example.com").status_code == 302
+
+    with app.app_context():
+        groceries = Category(
+            user_id=user_id,
+            name="Groceries",
+            kind="expense",
+            color="#123456",
+        )
+        dining = Category(
+            user_id=user_id,
+            name="Dining",
+            kind="expense",
+            color="#654321",
+        )
+        db.session.add_all([groceries, dining])
+        db.session.commit()
+        dining_id = dining.id
+
+    response = client.post(
+        f"/finance/categories/{dining_id}/edit",
+        data={
+            "edit-name": "groceries",
+            "edit-kind": "expense",
+            "edit-color": "#654321",
+            "edit-submit": "Add category",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 409
+    assert b"That category already exists for this type." in response.data
+    with app.app_context():
+        category = db.session.get(Category, dining_id)
+        assert category is not None
+        assert category.name == "Dining"
+        assert category.kind == "expense"
 
 
 def test_edit_category_kind_linked_to_transactions_is_blocked(
@@ -1724,3 +1960,142 @@ def test_analytics_series_uses_correct_income_and_expense_points(
         assert snapshot["flow_labels"] == [date.today().strftime("%Y-%m")]
         assert snapshot["income_points"] == ["900.00"]
         assert snapshot["expense_points"] == ["250.00"]
+
+
+def test_timezone_month_rollover_sets_dashboard_and_reporting_windows(
+    app, make_user, seed_finance, monkeypatch
+):
+    monkeypatch.setattr(
+        "finance_tracker.services.dates.utc_now",
+        lambda: datetime(2024, 12, 31, 20, 30, tzinfo=UTC),
+    )
+    user_id = make_user("analytics-month-rollover@example.com")
+    setup = seed_finance(user_id)
+    _set_user_timezone(app, user_id, "Asia/Karachi")
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="income",
+                    amount=Decimal("999.00"),
+                    description="Previous UTC month income",
+                    occurred_on=date(2024, 12, 31),
+                    account_id=setup["checking_id"],
+                    category_id=setup["income_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("999.00"),
+                    description="Previous UTC month expense",
+                    occurred_on=date(2024, 12, 31),
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="income",
+                    amount=Decimal("100.00"),
+                    description="User-local rollover income",
+                    occurred_on=date(2025, 1, 1),
+                    account_id=setup["checking_id"],
+                    category_id=setup["income_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("40.00"),
+                    description="User-local rollover expense",
+                    occurred_on=date(2025, 1, 1),
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+            ]
+        )
+        db.session.commit()
+
+        dashboard = build_dashboard_snapshot(user_id)
+        assert dashboard["month_start"] == date(2025, 1, 1)
+        assert dashboard["month_end"] == date(2025, 1, 31)
+        assert dashboard["income_total"] == Decimal("100.00")
+        assert dashboard["expense_total"] == Decimal("40.00")
+
+        series = build_monthly_summary_series(user_id, months=1)
+        assert series["flow_labels"] == ["2025-01"]
+        assert series["income_points"] == ["100.00"]
+        assert series["expense_points"] == ["40.00"]
+        assert series["category_points"] == ["40.00"]
+
+
+def test_analytics_category_series_excludes_future_expenses(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("analytics-future-category@example.com")
+    setup = seed_finance(user_id)
+    assert login("analytics-future-category@example.com").status_code == 302
+
+    current_month = date.today().replace(day=1)
+    next_month = (current_month + timedelta(days=32)).replace(day=1)
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("25.00"),
+                    description="Current month expense",
+                    occurred_on=current_month,
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+                Transaction(
+                    user_id=user_id,
+                    transaction_type="expense",
+                    amount=Decimal("999.00"),
+                    description="Future expense",
+                    occurred_on=next_month,
+                    account_id=setup["checking_id"],
+                    category_id=setup["expense_category_id"],
+                ),
+            ]
+        )
+        db.session.commit()
+
+        snapshot = build_monthly_summary_series(user_id, months=1)
+        assert snapshot["flow_labels"] == [current_month.strftime("%Y-%m")]
+        assert snapshot["expense_points"] == ["25.00"]
+        assert snapshot["category_labels"] == ["Groceries"]
+        assert snapshot["category_points"] == ["25.00"]
+
+
+def test_analytics_category_series_includes_in_window_expenses(
+    app, client, login, make_user, seed_finance
+):
+    user_id = make_user("analytics-in-window-category@example.com")
+    setup = seed_finance(user_id)
+    assert login("analytics-in-window-category@example.com").status_code == 302
+
+    current_month = date.today().replace(day=1)
+
+    with app.app_context():
+        db.session.add(
+            Transaction(
+                user_id=user_id,
+                transaction_type="expense",
+                amount=Decimal("42.00"),
+                description="In-window expense",
+                occurred_on=current_month,
+                account_id=setup["checking_id"],
+                category_id=setup["expense_category_id"],
+            )
+        )
+        db.session.commit()
+
+        snapshot = build_monthly_summary_series(user_id, months=1)
+        assert snapshot["flow_labels"] == [current_month.strftime("%Y-%m")]
+        assert snapshot["expense_points"] == ["42.00"]
+        assert snapshot["category_labels"] == ["Groceries"]
+        assert snapshot["category_points"] == ["42.00"]
