@@ -5,6 +5,8 @@ Revises: e5a1b7c2d9f4
 Create Date: 2026-04-24 08:00:00.000000
 
 """
+from contextlib import contextmanager
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -62,12 +64,40 @@ def raise_for_invalid_budget_category_ownership(connection) -> None:
     )
 
 
+@contextmanager
+def disable_sqlite_foreign_keys_for_batch(connection):
+    if connection.dialect.name != "sqlite":
+        yield
+        return
+
+    foreign_keys_were_enabled = bool(
+        connection.exec_driver_sql("PRAGMA foreign_keys").scalar()
+    )
+    if not foreign_keys_were_enabled:
+        yield
+        return
+
+    connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    try:
+        yield
+        violations = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            details = "; ".join(str(tuple(row)) for row in violations)
+            raise RuntimeError(
+                "SQLite foreign key violations after rebuilding categories: "
+                f"{details}"
+            )
+    finally:
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+
 def upgrade():
     connection = op.get_bind()
     raise_for_invalid_budget_category_ownership(connection)
 
-    with op.batch_alter_table("categories", schema=None) as batch_op:
-        batch_op.create_unique_constraint("uq_categories_id_user", ["id", "user_id"])
+    with disable_sqlite_foreign_keys_for_batch(connection):
+        with op.batch_alter_table("categories", schema=None) as batch_op:
+            batch_op.create_unique_constraint("uq_categories_id_user", ["id", "user_id"])
 
     with op.batch_alter_table(
         "budgets",
@@ -105,5 +135,7 @@ def downgrade():
             ondelete="CASCADE",
         )
 
-    with op.batch_alter_table("categories", schema=None) as batch_op:
-        batch_op.drop_constraint("uq_categories_id_user", type_="unique")
+    connection = op.get_bind()
+    with disable_sqlite_foreign_keys_for_batch(connection):
+        with op.batch_alter_table("categories", schema=None) as batch_op:
+            batch_op.drop_constraint("uq_categories_id_user", type_="unique")

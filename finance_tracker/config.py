@@ -80,9 +80,12 @@ def get_config(name: str | None):
         "production": ProductionConfig,
         "testing": TestingConfig,
     }
-    resolved = (
-        name or os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development"
-    ).strip().lower()
+    raw_name = name or os.getenv("APP_ENV") or os.getenv("FLASK_ENV")
+    if raw_name is None:
+        allowed = ", ".join(sorted(config_map))
+        raise RuntimeError(f"APP_ENV must be set to one of: {allowed}.")
+
+    resolved = raw_name.strip().lower()
     try:
         return config_map[resolved]
     except KeyError as exc:

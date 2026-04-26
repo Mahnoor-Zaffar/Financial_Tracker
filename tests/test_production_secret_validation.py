@@ -20,6 +20,14 @@ def test_unknown_environment_name_does_not_start_as_development(monkeypatch):
         create_app()
 
 
+def test_missing_environment_name_does_not_start_as_development(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("FLASK_ENV", raising=False)
+
+    with pytest.raises(RuntimeError, match="APP_ENV must be set"):
+        create_app()
+
+
 def test_production_startup_accepts_high_entropy_secret(monkeypatch):
     secret = "V7x!2kQ9$Lm4#Np8@Rs6%Tw1&Yz3*Bc5!Df7^Gh9"
     monkeypatch.setattr(ProductionConfig, "SECRET_KEY", secret)
