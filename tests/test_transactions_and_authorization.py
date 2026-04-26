@@ -13,7 +13,8 @@ from finance_tracker.services import (
     build_monthly_summary_series,
     get_budget_progress_rows,
 )
-from sqlalchemy.exc import SAWarning
+import pytest
+from sqlalchemy.exc import IntegrityError, SAWarning
 
 
 def _create_transaction(client, payload: dict, follow_redirects: bool = False):
@@ -1802,6 +1803,34 @@ def test_delete_transaction_with_one_tag_cleans_association_rows(
         remaining_tag = db.session.get(Tag, tag_id)
         assert remaining_tag is not None
         assert remaining_tag.user_id == user_id
+
+
+def test_cross_user_tag_append_is_rejected(app, make_user, seed_finance):
+    tx_user_id = make_user("tx-tag-owner@example.com")
+    tag_user_id = make_user("foreign-tag-owner@example.com")
+    setup = seed_finance(tx_user_id)
+
+    with app.app_context():
+        foreign_tag = Tag(user_id=tag_user_id, name="foreign", color="#123456")
+        tx = Transaction(
+            user_id=tx_user_id,
+            transaction_type="expense",
+            amount=Decimal("30.00"),
+            description="Cross user tag",
+            occurred_on=date.today(),
+            account_id=setup["checking_id"],
+            category_id=setup["expense_category_id"],
+        )
+        db.session.add_all([foreign_tag, tx])
+        db.session.flush()
+
+        tx.tags.append(foreign_tag)
+
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+
+        db.session.rollback()
+        assert db.session.query(TransactionTag).count() == 0
 
 
 def test_delete_transaction_with_multiple_tags_cleans_association_rows(

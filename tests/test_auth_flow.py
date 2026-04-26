@@ -56,6 +56,16 @@ def test_login_required_redirects_to_auth(client):
     assert "/auth/login" in response.headers["Location"]
 
 
+def test_malformed_session_user_id_is_treated_as_anonymous(client):
+    with client.session_transaction() as session:
+        session["_user_id"] = "not-an-int"
+
+    response = client.get("/dashboard", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert "/auth/login" in response.headers["Location"]
+
+
 def test_register_accepts_email_with_spaces(app, client):
     response = client.post(
         "/auth/register",
